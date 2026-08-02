@@ -1,0 +1,21 @@
+{
+    "main": "src/index.ts",
+    "compatibility_date": "2026-07-10",
+    "vars": {
+        "JWT_SECRET": "dev-only-troque-em-producao"
+    },
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "minhas_financas",
+            "database_id": "e3f1b2c3-4d5e-6789-abcd-ef0123456789",
+            "migrations_dir": "./migrations"
+        }
+    ],
+    "r2_buckets": [
+        {
+            "binding": "BUCKET",
+            "bucket_name": "minhas-financas-extratos"
+        }
+    ]
+}
