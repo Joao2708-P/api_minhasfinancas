@@ -3,7 +3,12 @@ import { extractService } from "../services/extract.service";
 import { importExtractSchema } from "../schemas/extract.schema";
 import { formatFromFileName } from "../lib/statementParser";
 import { BadRequestError, NotFoundError } from "../errors/errors";
-import type { AppEnv } from "../types";
+import type { AppEnv, Scope } from "../types";
+
+const scopeOf = (c: Context<AppEnv>): Scope => ({
+    orgId: c.get("organizacaoId"),
+    clienteId: c.get("clienteId"),
+});
 
 export const extractController = {
     // POST /extracts  (multipart/form-data: file, account_id?)
@@ -25,7 +30,7 @@ export const extractController = {
         // Só lê como texto os formatos que serão parseados.
         const content = format === "pdf" ? "" : new TextDecoder().decode(bytes);
 
-        const result = await extractService.upload(c.get("db"), c.env.BUCKET, c.get("userId"), {
+        const result = await extractService.upload(c.get("db"), c.env.BUCKET, scopeOf(c), {
             fileName: file.name,
             format,
             content,
@@ -37,14 +42,14 @@ export const extractController = {
     },
 
     async listExtracts(c: Context<AppEnv>) {
-        const extracts = await extractService.listByUser(c.get("db"), c.get("userId"));
+        const extracts = await extractService.listByScope(c.get("db"), scopeOf(c));
         return c.json(extracts);
     },
 
     async getExtractById(c: Context<AppEnv>) {
         const id = c.req.param("id")!;
 
-        const row = await extractService.findByIdOwned(c.get("db"), c.get("userId"), id);
+        const row = await extractService.findByIdOwned(c.get("db"), scopeOf(c), id);
         if (!row) throw new NotFoundError("Extrato");
 
         return c.json(row);
@@ -55,14 +60,14 @@ export const extractController = {
         const id = c.req.param("id")!;
         const body = importExtractSchema.parse(await c.req.json());
 
-        const result = await extractService.importEntries(c.get("db"), c.get("userId"), id, body);
+        const result = await extractService.importEntries(c.get("db"), scopeOf(c), id, body);
         return c.json(result, 201);
     },
 
     async deleteExtract(c: Context<AppEnv>) {
         const id = c.req.param("id")!;
 
-        const deleted = await extractService.delete(c.get("db"), c.env.BUCKET, c.get("userId"), id);
+        const deleted = await extractService.delete(c.get("db"), c.env.BUCKET, scopeOf(c), id);
         if (!deleted) throw new NotFoundError("Extrato");
 
         return c.json(deleted);

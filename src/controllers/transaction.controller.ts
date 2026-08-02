@@ -2,7 +2,12 @@ import type { Context } from "hono";
 import { createTransactionSchema, updateTransactionSchema } from "../schemas/transaction.schema";
 import { transactionService, type TransactionFilters } from "../services/transaction.service";
 import { NotFoundError } from "../errors/errors";
-import type { AppEnv } from "../types";
+import type { AppEnv, Scope } from "../types";
+
+const scopeOf = (c: Context<AppEnv>): Scope => ({
+    orgId: c.get("organizacaoId"),
+    clienteId: c.get("clienteId"),
+});
 
 // Lê filtros opcionais da query string (?account_id=..&type=in&from=..&to=..).
 function parseFilters(c: Context<AppEnv>): TransactionFilters {
@@ -25,14 +30,14 @@ function parseFilters(c: Context<AppEnv>): TransactionFilters {
 
 export const transactionController = {
     async listTransactions(c: Context<AppEnv>) {
-        const txs = await transactionService.listByUser(c.get("db"), c.get("userId"), parseFilters(c));
+        const txs = await transactionService.listByScope(c.get("db"), scopeOf(c), parseFilters(c));
         return c.json(txs);
     },
 
     async getTransactionById(c: Context<AppEnv>) {
         const id = c.req.param("id")!;
 
-        const tx = await transactionService.findByIdOwned(c.get("db"), c.get("userId"), id);
+        const tx = await transactionService.findByIdOwned(c.get("db"), scopeOf(c), id);
         if (!tx) throw new NotFoundError("Transação");
 
         return c.json(tx);
@@ -41,7 +46,7 @@ export const transactionController = {
     async createTransaction(c: Context<AppEnv>) {
         const body = createTransactionSchema.parse(await c.req.json());
 
-        const tx = await transactionService.create(c.get("db"), c.get("userId"), body);
+        const tx = await transactionService.create(c.get("db"), scopeOf(c), body);
         return c.json(tx, 201);
     },
 
@@ -49,14 +54,14 @@ export const transactionController = {
         const id = c.req.param("id")!;
         const body = updateTransactionSchema.parse(await c.req.json());
 
-        const tx = await transactionService.update(c.get("db"), c.get("userId"), id, body);
+        const tx = await transactionService.update(c.get("db"), scopeOf(c), id, body);
         return c.json(tx);
     },
 
     async deleteTransaction(c: Context<AppEnv>) {
         const id = c.req.param("id")!;
 
-        const deleted = await transactionService.delete(c.get("db"), c.get("userId"), id);
+        const deleted = await transactionService.delete(c.get("db"), scopeOf(c), id);
         if (!deleted) throw new NotFoundError("Transação");
 
         return c.json(deleted);

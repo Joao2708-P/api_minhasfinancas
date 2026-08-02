@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types";
 import { authGuard } from "../middlewares/auth";
+import { orgContext, clienteScope } from "../middlewares/orgContext";
 
 import { authRoute } from "./auth.route";
 import { userRoute } from "./users.route";
@@ -21,13 +22,22 @@ routes.route("/auth", authRoute);
 const protectedRoutes = new Hono<AppEnv>();
 protectedRoutes.use("*", authGuard);
 
+// Identidade do próprio usuário e lookups globais — não dependem de org/cliente.
 protectedRoutes.route("/users", userRoute);
-protectedRoutes.route("/accounts", accountRoute);
 protectedRoutes.route("/account-types", accountTypeRoute);
-protectedRoutes.route("/categories", categoryRoute);
-protectedRoutes.route("/goals", goalRoute);
-protectedRoutes.route("/transactions", transactionRoute);
-protectedRoutes.route("/extracts", extractRoute);
-protectedRoutes.route("/reports", reportRoute);
+
+// Dados financeiros: escopados por organização (X-Org-Id) + cliente (X-Cliente-Id).
+// orgContext resolve o membro ativo; clienteScope valida e injeta o clienteId;
+// cada rota checa a permissão via requirePermission.
+const scoped = new Hono<AppEnv>();
+scoped.use("*", orgContext, clienteScope);
+scoped.route("/accounts", accountRoute);
+scoped.route("/categories", categoryRoute);
+scoped.route("/goals", goalRoute);
+scoped.route("/transactions", transactionRoute);
+scoped.route("/extracts", extractRoute);
+scoped.route("/reports", reportRoute);
+
+protectedRoutes.route("/", scoped);
 
 routes.route("/", protectedRoutes);

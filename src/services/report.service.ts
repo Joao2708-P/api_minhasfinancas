@@ -1,13 +1,17 @@
 import { and, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import type { Database } from "../database";
 import { account, category, transaction } from "../database/schema";
+import type { Scope } from "../types";
 import { goalService, goalProgress } from "./goal.service";
 
 type Period = { from?: Date; to?: Date };
 
-// Monta as condições comuns (usuário + intervalo de datas).
-function baseConditions(userId: string, period: Period): SQL[] {
-    const conditions: SQL[] = [eq(transaction.user_id, userId)];
+// Condições comuns: tenant (org+cliente) + intervalo de datas.
+function baseConditions(s: Scope, period: Period): SQL[] {
+    const conditions: SQL[] = [
+        eq(transaction.organizacao_id, s.orgId),
+        eq(transaction.cliente_id, s.clienteId),
+    ];
     if (period.from) conditions.push(gte(transaction.date, period.from));
     if (period.to) conditions.push(lte(transaction.date, period.to));
     return conditions;
@@ -18,11 +22,11 @@ const sumOut = sql<number>`coalesce(sum(case when ${transaction.type} = 'out' th
 
 export const reportService = {
     // Resumo geral: entradas, saídas e saldo do período (em centavos).
-    async summary(db: Database, userId: string, period: Period) {
+    async summary(db: Database, s: Scope, period: Period) {
         const [row] = await db
             .select({ incomes: sumIn, expenses: sumOut })
             .from(transaction)
-            .where(and(...baseConditions(userId, period)));
+            .where(and(...baseConditions(s, period)));
 
         const incomes = Number(row?.incomes ?? 0);
         const expenses = Number(row?.expenses ?? 0);
@@ -31,7 +35,7 @@ export const reportService = {
     },
 
     // Totais agrupados por categoria.
-    async byCategory(db: Database, userId: string, period: Period) {
+    async byCategory(db: Database, s: Scope, period: Period) {
         const rows = await db
             .select({
                 categoryId: transaction.category_id,
@@ -41,7 +45,7 @@ export const reportService = {
             })
             .from(transaction)
             .leftJoin(category, eq(transaction.category_id, category.id))
-            .where(and(...baseConditions(userId, period)))
+            .where(and(...baseConditions(s, period)))
             .groupBy(transaction.category_id);
 
         return rows.map((r) => ({
@@ -54,7 +58,7 @@ export const reportService = {
     },
 
     // Totais agrupados por conta.
-    async byAccount(db: Database, userId: string, period: Period) {
+    async byAccount(db: Database, s: Scope, period: Period) {
         const rows = await db
             .select({
                 accountId: transaction.account_id,
@@ -64,7 +68,7 @@ export const reportService = {
             })
             .from(transaction)
             .leftJoin(account, eq(transaction.account_id, account.id))
-            .where(and(...baseConditions(userId, period)))
+            .where(and(...baseConditions(s, period)))
             .groupBy(transaction.account_id);
 
         return rows.map((r) => ({
@@ -77,13 +81,13 @@ export const reportService = {
     },
 
     // Fluxo de caixa por mês (YYYY-MM).
-    async monthlyCashflow(db: Database, userId: string, period: Period) {
+    async monthlyCashflow(db: Database, s: Scope, period: Period) {
         const month = sql<string>`strftime('%Y-%m', ${transaction.date}, 'unixepoch')`;
 
         const rows = await db
             .select({ month, incomes: sumIn, expenses: sumOut })
             .from(transaction)
-            .where(and(...baseConditions(userId, period)))
+            .where(and(...baseConditions(s, period)))
             .groupBy(month)
             .orderBy(month);
 
@@ -95,9 +99,9 @@ export const reportService = {
         }));
     },
 
-    // Progresso de todas as metas do usuário.
-    async goals(db: Database, userId: string) {
-        const goals = await goalService.listByUser(db, userId);
+    // Progresso de todas as metas do cliente.
+    async goals(db: Database, s: Scope) {
+        const goals = await goalService.listByScope(db, s);
         return goals.map((g) => ({ ...g, ...goalProgress(g.target_value, g.current_value) }));
     },
 };
