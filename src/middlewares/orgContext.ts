@@ -1,7 +1,7 @@
 import type { MiddlewareHandler } from "hono";
 import { and, eq } from "drizzle-orm";
 import type { AppEnv } from "../types";
-import { membro as membroTable } from "../database/schema";
+import { membro as membroTable, organizacao } from "../database/schema";
 import { BadRequestError, ForbiddenError } from "../errors/errors";
 import { can, type Permission } from "../lib/permissions";
 import { assertClienteNaOrg, assertMembroPodeAcessarCliente } from "../lib/tenant";
@@ -10,10 +10,21 @@ import { assertClienteNaOrg, assertMembroPodeAcessarCliente } from "../lib/tenan
 // O status é lido a CADA request → revogar (status='revoked') bloqueia na hora,
 // independente do TTL do JWT.
 export const orgContext: MiddlewareHandler<AppEnv> = async (c, next) => {
-    const orgId = c.req.header("X-Org-Id");
+    const db = c.get("db");
+
+    // Org ativa por X-Org-Id (dashboard) ou, no white-label, pelo subdomínio.
+    let orgId = c.req.header("X-Org-Id");
+    if (!orgId) {
+        const subdomain = c.req.header("X-Org-Subdomain");
+        if (subdomain) {
+            const org = await db.query.organizacao.findFirst({
+                where: eq(organizacao.subdomain, subdomain),
+            });
+            orgId = org?.id;
+        }
+    }
     if (!orgId) throw new BadRequestError("Cabeçalho X-Org-Id ausente");
 
-    const db = c.get("db");
     const m = await db.query.membro.findFirst({
         where: and(
             eq(membroTable.organizacao_id, orgId),

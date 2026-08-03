@@ -15,11 +15,14 @@ import { reportRoute } from "./report.route";
 import { orgRoute } from "./org.route";
 import { membroRoute } from "./membro.route";
 import { clienteRoute } from "./cliente.route";
+import { orgSettingsRoute } from "./orgSettings.route";
+import { publicRoute } from "./public.route";
 
 export const routes = new Hono<AppEnv>();
 
-// Rotas públicas (registro/login).
+// Rotas públicas (registro/login + marca white-label por subdomínio).
 routes.route("/auth", authRoute);
+routes.route("/public", publicRoute);
 
 // Rotas protegidas: exigem JWT válido. O authGuard injeta o userId no contexto.
 const protectedRoutes = new Hono<AppEnv>();
@@ -36,6 +39,7 @@ const orgScoped = new Hono<AppEnv>();
 orgScoped.use("*", orgContext);
 orgScoped.route("/membros", membroRoute);
 orgScoped.route("/clientes", clienteRoute);
+orgScoped.route("/org", orgSettingsRoute);
 protectedRoutes.route("/", orgScoped);
 
 // Dados financeiros: escopados por organização (X-Org-Id) + cliente (X-Cliente-Id).
