@@ -25,6 +25,11 @@ function parseFilters(c: Context<AppEnv>): TransactionFilters {
     if (from) filters.from = new Date(from);
     if (to) filters.to = new Date(to);
 
+    const limit = Number(c.req.query("limit"));
+    const offset = Number(c.req.query("offset"));
+    if (Number.isInteger(limit) && limit > 0) filters.limit = limit;
+    if (Number.isInteger(offset) && offset > 0) filters.offset = offset;
+
     return filters;
 }
 

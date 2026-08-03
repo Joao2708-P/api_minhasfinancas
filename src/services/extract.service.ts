@@ -10,7 +10,7 @@ import {
 import { suggestCategoryId } from "../lib/categoryRules";
 import type { ImportExtractInput } from "../schemas/extract.schema";
 import type { Scope } from "../types";
-import { ForbiddenError, NotFoundError } from "../errors/errors";
+import { ConflictError, ForbiddenError, NotFoundError } from "../errors/errors";
 
 type UploadInput = {
     fileName: string;
@@ -92,6 +92,11 @@ export const extractService = {
     async importEntries(db: Database, s: Scope, extractId: string, input: ImportExtractInput) {
         const row = await this.findByIdOwned(db, s, extractId);
         if (!row) throw new NotFoundError("Extrato");
+        // Idempotência básica (§7): não reimporta um extrato já importado, evitando
+        // duplicar dinheiro. (Dedupe fino por FITID/hash de lançamento fica p/ depois.)
+        if (row.status === "imported") {
+            throw new ConflictError("Este extrato já foi importado");
+        }
 
         await assertAccountInScope(db, s, input.account_id);
 

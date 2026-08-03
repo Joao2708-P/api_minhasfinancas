@@ -11,6 +11,8 @@ export type TransactionFilters = {
     type?: "in" | "out";
     from?: Date;
     to?: Date;
+    limit?: number;   // paginação opcional (sem limite = tudo)
+    offset?: number;
 };
 
 const inScope = (s: Scope) =>
@@ -60,6 +62,8 @@ export const transactionService = {
         return db.query.transaction.findMany({
             where: and(...conditions),
             orderBy: [desc(transaction.date)],
+            limit: filters.limit,
+            offset: filters.offset,
         });
     },
 

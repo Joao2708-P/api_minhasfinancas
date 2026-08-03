@@ -13,6 +13,17 @@ function fromHex(hex: string): Uint8Array {
     return bytes;
 }
 
+// Comparação de tempo constante: evita timing attack ao verificar a senha.
+// O `===` de strings retorna cedo no 1º byte diferente, vazando informação.
+function timingSafeEqualHex(a: string, b: string): boolean {
+    if (a.length !== b.length) return false;
+    let mismatch = 0;
+    for (let i = 0; i < a.length; i++) {
+        mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    }
+    return mismatch === 0;
+}
+
 export async function hashPassword(password: string): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(16))
 
@@ -53,5 +64,5 @@ export async function verifyPassword(password: string, stored: string): Promise<
         256
     )
 
-    return toHex(derivedBits) === hasHex
+    return timingSafeEqualHex(toHex(derivedBits), hasHex)
 }

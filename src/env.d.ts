@@ -7,4 +7,7 @@ interface CloudflareBindings {
     JWT_SECRET: string;
     // Bucket R2 onde os arquivos de extrato são armazenados.
     BUCKET: R2Bucket;
+    // Origens permitidas no CORS (CSV). Ex.: "https://app.exemplo.com,https://x.exemplo.com".
+    // Vazio em dev → cai no allowlist de localhost. Definir em produção.
+    CORS_ORIGINS?: string;
 }
