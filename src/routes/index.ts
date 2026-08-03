@@ -12,6 +12,9 @@ import { goalRoute } from "./goal.route";
 import { transactionRoute } from "./transaction.route";
 import { extractRoute } from "./extract.route";
 import { reportRoute } from "./report.route";
+import { orgRoute } from "./org.route";
+import { membroRoute } from "./membro.route";
+import { clienteRoute } from "./cliente.route";
 
 export const routes = new Hono<AppEnv>();
 
@@ -25,6 +28,15 @@ protectedRoutes.use("*", authGuard);
 // Identidade do próprio usuário e lookups globais — não dependem de org/cliente.
 protectedRoutes.route("/users", userRoute);
 protectedRoutes.route("/account-types", accountTypeRoute);
+// Criar org / listar minhas orgs — antes de ter uma org ativa (sem orgContext).
+protectedRoutes.route("/orgs", orgRoute);
+
+// Escopado por organização (X-Org-Id), SEM cliente: gestão de membros e clientes.
+const orgScoped = new Hono<AppEnv>();
+orgScoped.use("*", orgContext);
+orgScoped.route("/membros", membroRoute);
+orgScoped.route("/clientes", clienteRoute);
+protectedRoutes.route("/", orgScoped);
 
 // Dados financeiros: escopados por organização (X-Org-Id) + cliente (X-Cliente-Id).
 // orgContext resolve o membro ativo; clienteScope valida e injeta o clienteId;

@@ -5,3 +5,6 @@ export * from "./category.schema";
 export * from "./goal.schema";
 export * from "./transaction.schema";
 export * from "./extract.schema";
+export * from "./org.schema";
+export * from "./membro.schema";
+export * from "./cliente.schema";
