@@ -88,6 +88,9 @@ export const cliente = sqliteTable(
         user_id: text('usuario_id').references(() => users.id, { onDelete: 'set null' }),
         responsavel_id: text('responsavel_id').references(() => membro.id, { onDelete: 'set null' }),
         name: text('nome').notNull(),
+        // §1.2b: cliente arquivado não conta pra cobrança/métricas (billing §5.1).
+        // Incluído já no schema — adicionar depois que há dado é mais custoso.
+        status: text('status', { enum: ['ativo', 'arquivado'] }).notNull().default('ativo'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
     }

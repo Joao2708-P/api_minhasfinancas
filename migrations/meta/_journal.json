@@ -15,6 +15,13 @@
       "when": 1785548335044,
       "tag": "0001_thin_jigsaw",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785720509152,
+      "tag": "0002_damp_triton",
+      "breakpoints": true
     }
   ]
 }
