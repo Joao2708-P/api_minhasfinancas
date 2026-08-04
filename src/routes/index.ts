@@ -17,12 +17,18 @@ import { membroRoute } from "./membro.route";
 import { clienteRoute } from "./cliente.route";
 import { orgSettingsRoute } from "./orgSettings.route";
 import { publicRoute } from "./public.route";
+import { adminRoute } from "./admin.route";
 
 export const routes = new Hono<AppEnv>();
 
-// Rotas públicas (registro/login + marca white-label por subdomínio).
+// Rotas públicas (login + marca white-label por subdomínio).
 routes.route("/auth", authRoute);
 routes.route("/public", publicRoute);
+
+// Provisionamento: NÃO usa authGuard — é gated pelo ADMIN_TOKEN dentro da rota
+// (adminGuard). É como o dono da plataforma cadastra donos enquanto o
+// self-service está fechado.
+routes.route("/admin", adminRoute);
 
 // Rotas protegidas: exigem JWT válido. O authGuard injeta o userId no contexto.
 const protectedRoutes = new Hono<AppEnv>();

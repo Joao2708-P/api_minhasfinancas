@@ -12,7 +12,8 @@ const scopeOf = (c: Context<AppEnv>): Scope => ({
 
 export const accountController = {
     async listAccounts(c: Context<AppEnv>) {
-        const accounts = await accountService.listByScope(c.get("db"), scopeOf(c));
+        // Devolve cada conta já com `currentBalance` (antes só o GET /:id trazia).
+        const accounts = await accountService.listWithBalances(c.get("db"), scopeOf(c));
         return c.json(accounts);
     },
 

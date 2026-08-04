@@ -63,6 +63,7 @@ export const reportService = {
             .select({
                 accountId: transaction.account_id,
                 accountName: account.name,
+                openingBalance: account.balance,
                 incomes: sumIn,
                 expenses: sumOut,
             })
@@ -76,7 +77,12 @@ export const reportService = {
             accountName: r.accountName ?? "Sem conta",
             incomes: Number(r.incomes),
             expenses: Number(r.expenses),
+            // `balance` = resultado do período (compat: o front já lê isto).
             balance: Number(r.incomes) - Number(r.expenses),
+            // Aditivo: saldo de abertura da conta (o saldo ATUAL real, sem recorte
+            // de período, vem de GET /accounts). Não somamos aqui pra não rotular
+            // como "atual" um número que depende do período filtrado.
+            openingBalance: Number(r.openingBalance ?? 0),
         }));
     },
 

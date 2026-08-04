@@ -15,7 +15,8 @@ function fromHex(hex: string): Uint8Array {
 
 // Comparação de tempo constante: evita timing attack ao verificar a senha.
 // O `===` de strings retorna cedo no 1º byte diferente, vazando informação.
-function timingSafeEqualHex(a: string, b: string): boolean {
+// Exportada para reuso (ex.: comparar o ADMIN_TOKEN no adminGuard).
+export function timingSafeEqual(a: string, b: string): boolean {
     if (a.length !== b.length) return false;
     let mismatch = 0;
     for (let i = 0; i < a.length; i++) {
@@ -64,5 +65,5 @@ export async function verifyPassword(password: string, stored: string): Promise<
         256
     )
 
-    return timingSafeEqualHex(toHex(derivedBits), hasHex)
+    return timingSafeEqual(toHex(derivedBits), hasHex)
 }

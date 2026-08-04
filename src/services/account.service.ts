@@ -19,6 +19,34 @@ export const accountService = {
         return db.query.account.findMany({ where: inScope(s) });
     },
 
+    // Lista as contas do tenant JÁ com o saldo atual de cada uma
+    // (abertura + entradas − saídas). O somatório por conta sai de UMA query
+    // agregada (evita N+1) e é escopado por org+cliente.
+    async listWithBalances(db: Database, s: Scope) {
+        const accounts = await db.query.account.findMany({ where: inScope(s) });
+
+        const netRows = await db
+            .select({
+                accountId: transaction.account_id,
+                incomes: sql<number>`coalesce(sum(case when ${transaction.type} = 'in' then ${transaction.value} else 0 end), 0)`,
+                expenses: sql<number>`coalesce(sum(case when ${transaction.type} = 'out' then ${transaction.value} else 0 end), 0)`,
+            })
+            .from(transaction)
+            .where(and(eq(transaction.organizacao_id, s.orgId), eq(transaction.cliente_id, s.clienteId)))
+            .groupBy(transaction.account_id);
+
+        // account_id → net (entradas − saídas) daquela conta.
+        const netByAccount = new Map<string, number>();
+        for (const r of netRows) {
+            if (r.accountId) netByAccount.set(r.accountId, Number(r.incomes) - Number(r.expenses));
+        }
+
+        return accounts.map((a) => ({
+            ...a,
+            currentBalance: (a.balance ?? 0) + (netByAccount.get(a.id) ?? 0),
+        }));
+    },
+
     async create(db: Database, s: Scope, input: CreateAccountInput) {
         const [created] = await db
             .insert(account)

@@ -47,11 +47,18 @@ export const goalService = {
     },
 };
 
-// Progresso da meta (0 a 1) + valor que falta, em centavos.
+// Progresso da meta. Retorna (campos ADITIVOS — nada foi renomeado):
+//  - progress:  fração 0..1 (compat: o que o front já lê)
+//  - remaining: quanto falta, em centavos (compat)
+//  - percent:   0..100 arredondado, pronto pra exibir
+//  - reached:   já bateu a meta?
 export function goalProgress(target: number, current: number) {
     const ratio = target > 0 ? current / target : 0;
+    const progress = Math.min(1, Math.max(0, ratio));
     return {
-        progress: Math.min(1, Math.max(0, ratio)),
+        progress,
         remaining: Math.max(0, target - current),
+        percent: Math.round(progress * 100),
+        reached: target > 0 && current >= target,
     };
 }
