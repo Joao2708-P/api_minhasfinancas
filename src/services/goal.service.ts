@@ -2,54 +2,63 @@ import { and, eq } from "drizzle-orm";
 import type { Database } from "../database";
 import { goal } from "../database/schema";
 import type { CreateGoalInput, UpdateGoalInput } from "../schemas";
+import type { Scope } from "../types";
+
+const inScope = (s: Scope) =>
+    and(eq(goal.organizacao_id, s.orgId), eq(goal.cliente_id, s.clienteId));
 
 export const goalService = {
-    async findByIdOwned(db: Database, userId: string, id: string) {
+    async findByIdOwned(db: Database, s: Scope, id: string) {
         return db.query.goal.findFirst({
-            where: and(eq(goal.id, id), eq(goal.user_id, userId)),
+            where: and(eq(goal.id, id), inScope(s)),
         });
     },
 
-    async listByUser(db: Database, userId: string) {
-        return db.query.goal.findMany({
-            where: eq(goal.user_id, userId),
-        });
+    async listByScope(db: Database, s: Scope) {
+        return db.query.goal.findMany({ where: inScope(s) });
     },
 
-    async create(db: Database, userId: string, input: CreateGoalInput) {
+    async create(db: Database, s: Scope, input: CreateGoalInput) {
         const [created] = await db
             .insert(goal)
-            .values({ ...input, user_id: userId })
+            .values({ ...input, organizacao_id: s.orgId, cliente_id: s.clienteId })
             .returning();
 
         return created;
     },
 
-    async update(db: Database, userId: string, id: string, input: UpdateGoalInput) {
+    async update(db: Database, s: Scope, id: string, input: UpdateGoalInput) {
         const [updated] = await db
             .update(goal)
             .set({ ...input, updateAt: new Date() })
-            .where(and(eq(goal.id, id), eq(goal.user_id, userId)))
+            .where(and(eq(goal.id, id), inScope(s)))
             .returning();
 
         return updated;
     },
 
-    async delete(db: Database, userId: string, id: string) {
+    async delete(db: Database, s: Scope, id: string) {
         const [deleted] = await db
             .delete(goal)
-            .where(and(eq(goal.id, id), eq(goal.user_id, userId)))
+            .where(and(eq(goal.id, id), inScope(s)))
             .returning();
 
         return deleted;
     },
 };
 
-// Progresso da meta (0 a 1) + valor que falta, em centavos.
+// Progresso da meta. Retorna (campos ADITIVOS — nada foi renomeado):
+//  - progress:  fração 0..1 (compat: o que o front já lê)
+//  - remaining: quanto falta, em centavos (compat)
+//  - percent:   0..100 arredondado, pronto pra exibir
+//  - reached:   já bateu a meta?
 export function goalProgress(target: number, current: number) {
     const ratio = target > 0 ? current / target : 0;
+    const progress = Math.min(1, Math.max(0, ratio));
     return {
-        progress: Math.min(1, Math.max(0, ratio)),
+        progress,
         remaining: Math.max(0, target - current),
+        percent: Math.round(progress * 100),
+        reached: target > 0 && current >= target,
     };
 }

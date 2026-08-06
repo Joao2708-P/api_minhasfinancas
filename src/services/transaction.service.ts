@@ -2,6 +2,7 @@ import { and, desc, eq, gte, lte } from "drizzle-orm";
 import type { Database } from "../database";
 import { account, category, transaction } from "../database/schema";
 import type { CreateTransactionInput, UpdateTransactionInput } from "../schemas";
+import type { Scope } from "../types";
 import { ForbiddenError, NotFoundError } from "../errors/errors";
 
 export type TransactionFilters = {
@@ -10,34 +11,47 @@ export type TransactionFilters = {
     type?: "in" | "out";
     from?: Date;
     to?: Date;
+    limit?: number;   // paginação opcional (sem limite = tudo)
+    offset?: number;
 };
 
-// Garante que a conta pertence ao usuário (senão a transação vazaria dados).
-async function assertAccountOwned(db: Database, userId: string, accountId: string) {
+const inScope = (s: Scope) =>
+    and(eq(transaction.organizacao_id, s.orgId), eq(transaction.cliente_id, s.clienteId));
+
+// Garante que a conta pertence ao mesmo tenant (org+cliente).
+async function assertAccountInScope(db: Database, s: Scope, accountId: string) {
     const acc = await db.query.account.findFirst({
-        where: and(eq(account.id, accountId), eq(account.user_id, userId)),
+        where: and(
+            eq(account.id, accountId),
+            eq(account.organizacao_id, s.orgId),
+            eq(account.cliente_id, s.clienteId),
+        ),
     });
-    if (!acc) throw new ForbiddenError("Conta não pertence ao usuário");
+    if (!acc) throw new ForbiddenError("Conta não pertence a este cliente");
 }
 
-// Garante que a categoria (se informada) pertence ao usuário.
-async function assertCategoryOwned(db: Database, userId: string, categoryId?: string) {
+// Garante que a categoria (se informada) pertence ao mesmo tenant.
+async function assertCategoryInScope(db: Database, s: Scope, categoryId?: string) {
     if (!categoryId) return;
     const cat = await db.query.category.findFirst({
-        where: and(eq(category.id, categoryId), eq(category.user_id, userId)),
+        where: and(
+            eq(category.id, categoryId),
+            eq(category.organizacao_id, s.orgId),
+            eq(category.cliente_id, s.clienteId),
+        ),
     });
-    if (!cat) throw new ForbiddenError("Categoria não pertence ao usuário");
+    if (!cat) throw new ForbiddenError("Categoria não pertence a este cliente");
 }
 
 export const transactionService = {
-    async findByIdOwned(db: Database, userId: string, id: string) {
+    async findByIdOwned(db: Database, s: Scope, id: string) {
         return db.query.transaction.findFirst({
-            where: and(eq(transaction.id, id), eq(transaction.user_id, userId)),
+            where: and(eq(transaction.id, id), inScope(s)),
         });
     },
 
-    async listByUser(db: Database, userId: string, filters: TransactionFilters = {}) {
-        const conditions = [eq(transaction.user_id, userId)];
+    async listByScope(db: Database, s: Scope, filters: TransactionFilters = {}) {
+        const conditions = [inScope(s)];
 
         if (filters.account_id) conditions.push(eq(transaction.account_id, filters.account_id));
         if (filters.category_id) conditions.push(eq(transaction.category_id, filters.category_id));
@@ -48,41 +62,43 @@ export const transactionService = {
         return db.query.transaction.findMany({
             where: and(...conditions),
             orderBy: [desc(transaction.date)],
+            limit: filters.limit,
+            offset: filters.offset,
         });
     },
 
-    async create(db: Database, userId: string, input: CreateTransactionInput) {
-        await assertAccountOwned(db, userId, input.account_id);
-        await assertCategoryOwned(db, userId, input.category_id);
+    async create(db: Database, s: Scope, input: CreateTransactionInput) {
+        await assertAccountInScope(db, s, input.account_id);
+        await assertCategoryInScope(db, s, input.category_id);
 
         const [created] = await db
             .insert(transaction)
-            .values({ ...input, user_id: userId })
+            .values({ ...input, organizacao_id: s.orgId, cliente_id: s.clienteId })
             .returning();
 
         return created;
     },
 
-    async update(db: Database, userId: string, id: string, input: UpdateTransactionInput) {
-        const existing = await this.findByIdOwned(db, userId, id);
+    async update(db: Database, s: Scope, id: string, input: UpdateTransactionInput) {
+        const existing = await this.findByIdOwned(db, s, id);
         if (!existing) throw new NotFoundError("Transação");
 
-        if (input.account_id) await assertAccountOwned(db, userId, input.account_id);
-        if (input.category_id) await assertCategoryOwned(db, userId, input.category_id);
+        if (input.account_id) await assertAccountInScope(db, s, input.account_id);
+        if (input.category_id) await assertCategoryInScope(db, s, input.category_id);
 
         const [updated] = await db
             .update(transaction)
             .set({ ...input, updateAt: new Date() })
-            .where(and(eq(transaction.id, id), eq(transaction.user_id, userId)))
+            .where(and(eq(transaction.id, id), inScope(s)))
             .returning();
 
         return updated;
     },
 
-    async delete(db: Database, userId: string, id: string) {
+    async delete(db: Database, s: Scope, id: string) {
         const [deleted] = await db
             .delete(transaction)
-            .where(and(eq(transaction.id, id), eq(transaction.user_id, userId)))
+            .where(and(eq(transaction.id, id), inScope(s)))
             .returning();
 
         return deleted;

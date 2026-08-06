@@ -49,6 +49,11 @@ export const organizacao = sqliteTable(
         // Ponteiro de conveniência para o dono. O vínculo formal (com papel) é em `membro`.
         owner_id: text('dono_id').notNull().references(() => users.id),
         status: text('status', { enum: ['active', 'suspended'] }).notNull().default('active'),
+        // White-label (§1.2): identidade visual da org, exibida ao cliente.
+        brand_name: text('nome_marca'),          // nome exibido (fallback: `name`)
+        logo_key: text('logo_key'),              // key do R2, não a URL
+        primary_color: text('cor_primaria'),     // tema do portal do cliente
+        subdomain: text('subdominio').unique(),  // ex.: contabilidadex.seuapp.com
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
     }
@@ -83,6 +88,9 @@ export const cliente = sqliteTable(
         user_id: text('usuario_id').references(() => users.id, { onDelete: 'set null' }),
         responsavel_id: text('responsavel_id').references(() => membro.id, { onDelete: 'set null' }),
         name: text('nome').notNull(),
+        // §1.2b: cliente arquivado não conta pra cobrança/métricas (billing §5.1).
+        // Incluído já no schema — adicionar depois que há dado é mais custoso.
+        status: text('status', { enum: ['ativo', 'arquivado'] }).notNull().default('ativo'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
     }

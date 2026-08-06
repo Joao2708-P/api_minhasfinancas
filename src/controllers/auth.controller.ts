@@ -1,17 +1,11 @@
 import type { Context } from "hono";
-import { createUserSchema } from "../schemas/user.schema";
 import { loginSchema } from "../schemas/auth.schema";
 import { authService } from "../services/auth.service";
 import type { AppEnv } from "../types";
 
 export const authController = {
-    async register(c: Context<AppEnv>) {
-        const body = createUserSchema.parse(await c.req.json());
-
-        const result = await authService.register(c.get("db"), c.env.JWT_SECRET, body);
-
-        return c.json(result, 201);
-    },
+    // Cadastro público FECHADO: donos são provisionados via POST /admin/provision.
+    // `authService.register` fica preservado para quando o self-service reabrir.
 
     async login(c: Context<AppEnv>) {
         const body = loginSchema.parse(await c.req.json());

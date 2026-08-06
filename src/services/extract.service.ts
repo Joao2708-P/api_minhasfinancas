@@ -9,7 +9,8 @@ import {
 } from "../lib/statementParser";
 import { suggestCategoryId } from "../lib/categoryRules";
 import type { ImportExtractInput } from "../schemas/extract.schema";
-import { ForbiddenError, NotFoundError } from "../errors/errors";
+import type { Scope } from "../types";
+import { ConflictError, ForbiddenError, NotFoundError } from "../errors/errors";
 
 type UploadInput = {
     fileName: string;
@@ -22,32 +23,38 @@ type UploadInput = {
 // Uma entrada parseada + a categoria sugerida (para o cliente revisar).
 type EntryWithSuggestion = ParsedEntry & { suggestedCategoryId?: string };
 
-async function assertAccountOwned(db: Database, userId: string, accountId: string) {
+const inScope = (s: Scope) =>
+    and(eq(extract.organizacao_id, s.orgId), eq(extract.cliente_id, s.clienteId));
+
+async function assertAccountInScope(db: Database, s: Scope, accountId: string) {
     const acc = await db.query.account.findFirst({
-        where: and(eq(account.id, accountId), eq(account.user_id, userId)),
+        where: and(
+            eq(account.id, accountId),
+            eq(account.organizacao_id, s.orgId),
+            eq(account.cliente_id, s.clienteId),
+        ),
     });
-    if (!acc) throw new ForbiddenError("Conta não pertence ao usuário");
+    if (!acc) throw new ForbiddenError("Conta não pertence a este cliente");
 }
 
 export const extractService = {
-    async findByIdOwned(db: Database, userId: string, id: string) {
+    async findByIdOwned(db: Database, s: Scope, id: string) {
         return db.query.extract.findFirst({
-            where: and(eq(extract.id, id), eq(extract.user_id, userId)),
+            where: and(eq(extract.id, id), inScope(s)),
         });
     },
 
-    async listByUser(db: Database, userId: string) {
-        return db.query.extract.findMany({
-            where: eq(extract.user_id, userId),
-        });
+    async listByScope(db: Database, s: Scope) {
+        return db.query.extract.findMany({ where: inScope(s) });
     },
 
     // Faz upload do arquivo para o R2, registra o extrato e, se for csv/ofx,
     // devolve os lançamentos parseados já com sugestão de categoria.
-    async upload(db: Database, bucket: R2Bucket, userId: string, input: UploadInput) {
-        if (input.account_id) await assertAccountOwned(db, userId, input.account_id);
+    async upload(db: Database, bucket: R2Bucket, s: Scope, input: UploadInput) {
+        if (input.account_id) await assertAccountInScope(db, s, input.account_id);
 
-        const fileKey = `${userId}/${createId()}-${input.fileName}`;
+        // Key isola por tenant (org/cliente), não por usuário.
+        const fileKey = `${s.orgId}/${s.clienteId}/${createId()}-${input.fileName}`;
         await bucket.put(fileKey, input.bytes);
 
         const parsed = input.format === "pdf" ? [] : parseStatement(input.format, input.content);
@@ -56,7 +63,8 @@ export const extractService = {
         const [row] = await db
             .insert(extract)
             .values({
-                user_id: userId,
+                organizacao_id: s.orgId,
+                cliente_id: s.clienteId,
                 account_id: input.account_id ?? null,
                 fileKey,
                 fileName: input.fileName,
@@ -65,29 +73,36 @@ export const extractService = {
             })
             .returning();
 
-        // Sugere categorias com base nas categorias já cadastradas do usuário.
-        const userCategories = await db.query.category.findMany({
-            where: eq(category.user_id, userId),
+        // Sugere categorias com base nas categorias já cadastradas do cliente.
+        const clienteCategories = await db.query.category.findMany({
+            where: and(eq(category.organizacao_id, s.orgId), eq(category.cliente_id, s.clienteId)),
         });
 
         const entries: EntryWithSuggestion[] = parsed.map((e) => ({
             ...e,
-            suggestedCategoryId: suggestCategoryId(e.description, userCategories),
+            suggestedCategoryId: suggestCategoryId(e.description, clienteCategories),
         }));
 
         return { extract: row, entries };
     },
 
-    // Efetiva a importação: cria as transações a partir dos lançamentos
-    // (já revisados pelo cliente) e marca o extrato como importado.
-    async importEntries(db: Database, userId: string, extractId: string, input: ImportExtractInput) {
-        const row = await this.findByIdOwned(db, userId, extractId);
+    // Efetiva a importação: cria as transações e marca o extrato como importado.
+    // insert + update num db.batch() (atômico no D1) pra não duplicar dinheiro
+    // se a 2ª etapa falhar.
+    async importEntries(db: Database, s: Scope, extractId: string, input: ImportExtractInput) {
+        const row = await this.findByIdOwned(db, s, extractId);
         if (!row) throw new NotFoundError("Extrato");
+        // Idempotência básica (§7): não reimporta um extrato já importado, evitando
+        // duplicar dinheiro. (Dedupe fino por FITID/hash de lançamento fica p/ depois.)
+        if (row.status === "imported") {
+            throw new ConflictError("Este extrato já foi importado");
+        }
 
-        await assertAccountOwned(db, userId, input.account_id);
+        await assertAccountInScope(db, s, input.account_id);
 
         const values = input.entries.map((e) => ({
-            user_id: userId,
+            organizacao_id: s.orgId,
+            cliente_id: s.clienteId,
             account_id: input.account_id,
             category_id: e.category_id ?? null,
             type: e.type,
@@ -96,24 +111,25 @@ export const extractService = {
             date: e.date,
         }));
 
-        const created = await db.insert(transaction).values(values).returning();
+        const [created, updatedRows] = await db.batch([
+            db.insert(transaction).values(values).returning(),
+            db
+                .update(extract)
+                .set({
+                    status: "imported",
+                    account_id: input.account_id,
+                    importedCount: values.length,
+                    updateAt: new Date(),
+                })
+                .where(and(eq(extract.id, extractId), inScope(s)))
+                .returning(),
+        ]);
 
-        const [updated] = await db
-            .update(extract)
-            .set({
-                status: "imported",
-                account_id: input.account_id,
-                importedCount: created.length,
-                updateAt: new Date(),
-            })
-            .where(and(eq(extract.id, extractId), eq(extract.user_id, userId)))
-            .returning();
-
-        return { extract: updated, imported: created.length };
+        return { extract: updatedRows[0], imported: created.length };
     },
 
-    async delete(db: Database, bucket: R2Bucket, userId: string, id: string) {
-        const row = await this.findByIdOwned(db, userId, id);
+    async delete(db: Database, bucket: R2Bucket, s: Scope, id: string) {
+        const row = await this.findByIdOwned(db, s, id);
         if (!row) return undefined;
 
         // Remove o objeto do R2 antes de apagar o registro.
@@ -121,7 +137,7 @@ export const extractService = {
 
         const [deleted] = await db
             .delete(extract)
-            .where(and(eq(extract.id, id), eq(extract.user_id, userId)))
+            .where(and(eq(extract.id, id), inScope(s)))
             .returning();
 
         return deleted;
