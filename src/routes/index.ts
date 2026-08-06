@@ -18,6 +18,7 @@ import { clienteRoute } from "./cliente.route";
 import { orgSettingsRoute } from "./orgSettings.route";
 import { publicRoute } from "./public.route";
 import { adminRoute } from "./admin.route";
+import { calculatorRoute } from "./calculator.route";
 
 export const routes = new Hono<AppEnv>();
 
@@ -37,6 +38,8 @@ protectedRoutes.use("*", authGuard);
 // Identidade do próprio usuário e lookups globais — não dependem de org/cliente.
 protectedRoutes.route("/users", userRoute);
 protectedRoutes.route("/account-types", accountTypeRoute);
+// Calculadoras de simulação: cálculo puro (sem org/cliente), só exigem login.
+protectedRoutes.route("/calculators", calculatorRoute);
 // Criar org / listar minhas orgs — antes de ter uma org ativa (sem orgContext).
 protectedRoutes.route("/orgs", orgRoute);
 
