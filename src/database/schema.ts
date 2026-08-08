@@ -32,8 +32,33 @@ export const users = sqliteTable(
         email: text('email').notNull().unique(),
         password: text('senha').notNull(),
         cpf: text('cpf').notNull().unique(),
+        // true = senha ainda não definida pelo próprio usuário (provisionado ou reset
+        // forçado). Login bloqueia e encaminha ao fluxo de código (primeiro acesso).
+        mustReset: integer('deve_redefinir', { mode: 'boolean' }).notNull().default(false),
+        // true = dono da PLATAFORMA (você). Vê todas as orgs e o status de pagamento
+        // no painel /platform. NÃO é membro de org — é um papel acima do tenant.
+        platformAdmin: integer('admin_plataforma', { mode: 'boolean' }).notNull().default(false),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    }
+);
+
+/* ------------------------------------------------------------------ */
+/* Código de acesso (primeiro acesso + recuperação de senha)           */
+/* ------------------------------------------------------------------ */
+
+// Um código de uso único, com expiração, emitido para um usuário. Mesmo primitivo
+// para "primeiro acesso" (usuário provisionado) e "esqueci minha senha".
+// Guarda-se o HASH do código (nunca o valor cru), como a senha.
+export const codigoAcesso = sqliteTable(
+    "codigo_acesso", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        user_id: text('usuario_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+        code_hash: text('codigo_hash').notNull(),
+        purpose: text('proposito', { enum: ['first_access', 'reset'] }).notNull(),
+        expiresAt: integer('expira_em', { mode: 'timestamp' }).notNull(),
+        usedAt: integer('usado_em', { mode: 'timestamp' }),  // null = ainda não usado
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
     }
 );
 
@@ -49,6 +74,10 @@ export const organizacao = sqliteTable(
         // Ponteiro de conveniência para o dono. O vínculo formal (com papel) é em `membro`.
         owner_id: text('dono_id').notNull().references(() => users.id),
         status: text('status', { enum: ['active', 'suspended'] }).notNull().default('active'),
+        // Billing MÍNIMO (§5.1: sem motor de preço-fundador agora) — só o que o painel
+        // da plataforma precisa mostrar/alternar: "pagou ou não".
+        billing_status: text('status_pagamento', { enum: ['trial', 'active', 'past_due'] }).notNull().default('trial'),
+        paid_until: integer('pago_ate', { mode: 'timestamp' }),  // até quando está em dia (opcional)
         // White-label (§1.2): identidade visual da org, exibida ao cliente.
         brand_name: text('nome_marca'),          // nome exibido (fallback: `name`)
         logo_key: text('logo_key'),              // key do R2, não a URL
@@ -200,6 +229,11 @@ export const userRelations = relations(users, ({ many }) => ({
     membros: many(membro),
     // Um usuário pode estar vinculado a um cliente (quando o cliente tem login).
     clientes: many(cliente),
+    codigosAcesso: many(codigoAcesso),
+}));
+
+export const codigoAcessoRelations = relations(codigoAcesso, ({ one }) => ({
+    usuario: one(users, { fields: [codigoAcesso.user_id], references: [users.id] }),
 }));
 
 export const organizacaoRelations = relations(organizacao, ({ one, many }) => ({
