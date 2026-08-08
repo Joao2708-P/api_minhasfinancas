@@ -25,6 +25,16 @@ export function timingSafeEqual(a: string, b: string): boolean {
     return mismatch === 0;
 }
 
+// Gera uma senha temporária legível (sem caracteres ambíguos), para o convite de
+// primeiro acesso quando o dono/admin não define uma manualmente.
+export function generateTempPassword(length = 10): string {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+    const bytes = crypto.getRandomValues(new Uint8Array(length));
+    let out = '';
+    for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
+    return out;
+}
+
 export async function hashPassword(password: string): Promise<string> {
     const salt = crypto.getRandomValues(new Uint8Array(16))
 
