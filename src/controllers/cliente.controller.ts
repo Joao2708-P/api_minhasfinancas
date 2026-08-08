@@ -1,5 +1,5 @@
 import type { Context } from "hono";
-import { createClienteSchema } from "../schemas";
+import { createClienteSchema, clienteAccessSchema } from "../schemas";
 import { clienteService } from "../services/cliente.service";
 import { NotFoundError } from "../errors/errors";
 import type { AppEnv } from "../types";
@@ -31,5 +31,19 @@ export const clienteController = {
         );
         if (!row) throw new NotFoundError("Cliente");
         return c.json(row);
+    },
+
+    // Cria o acesso ao portal para um cliente. Devolve o firstAccessCode (fallback
+    // quando o e-mail real não está configurado).
+    async createAccess(c: Context<AppEnv>) {
+        const id = c.req.param("id")!;
+        const body = clienteAccessSchema.parse(await c.req.json());
+        const result = await clienteService.createAccess(
+            c.get("db"),
+            c.get("organizacaoId"),
+            id,
+            body,
+        );
+        return c.json(result, 201);
     },
 };
