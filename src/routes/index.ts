@@ -18,6 +18,8 @@ import { clienteRoute } from "./cliente.route";
 import { orgSettingsRoute } from "./orgSettings.route";
 import { publicRoute } from "./public.route";
 import { adminRoute } from "./admin.route";
+import { platformRoute } from "./platform.route";
+import { portalRoute } from "./portal.route";
 import { calculatorRoute } from "./calculator.route";
 
 export const routes = new Hono<AppEnv>();
@@ -38,6 +40,12 @@ protectedRoutes.use("*", authGuard);
 // Identidade do próprio usuário e lookups globais — não dependem de org/cliente.
 protectedRoutes.route("/users", userRoute);
 protectedRoutes.route("/account-types", accountTypeRoute);
+// Painel da plataforma (dono da plataforma) — exige JWT + platform_admin (guard
+// dentro da rota). Não depende de org/cliente: é um papel acima do tenant.
+protectedRoutes.route("/platform", platformRoute);
+// Portal do cliente — o clienteId vem do vínculo cliente.usuario_id (portalContext),
+// nunca de header. Read-only dos próprios dados. Não passa por orgContext.
+protectedRoutes.route("/portal", portalRoute);
 // Calculadoras de simulação: cálculo puro (sem org/cliente), só exigem login.
 protectedRoutes.route("/calculators", calculatorRoute);
 // Criar org / listar minhas orgs — antes de ter uma org ativa (sem orgContext).
