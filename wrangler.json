@@ -10,7 +10,7 @@
         {
             "binding": "DB",
             "database_name": "minhas_financas",
-            "database_id": "PREENCHER_COM_O_ID_DO_wrangler_d1_create",
+            "database_id": "14aa83ed-b444-47d8-9bcf-44213b0918be",
             "migrations_dir": "./migrations"
         }
     ],
