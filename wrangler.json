@@ -3,7 +3,7 @@
     "main": "src/index.ts",
     "compatibility_date": "2026-07-10",
     "vars": {
-        "CORS_ORIGINS": "",
+        "CORS_ORIGINS": "https://minhas-financas-app.pages.dev",
         "EMAIL_FROM": "Minhas Finanças <onboarding@resend.dev>"
     },
     "d1_databases": [
