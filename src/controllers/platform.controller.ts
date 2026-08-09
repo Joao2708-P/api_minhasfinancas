@@ -3,6 +3,7 @@ import { setBillingSchema } from "../schemas/platform.schema";
 import { provisionOwnerSchema } from "../schemas/admin.schema";
 import { platformService } from "../services/platform.service";
 import { adminService } from "../services/admin.service";
+import { emailConfigFromEnv } from "../lib/email";
 import type { AppEnv } from "../types";
 
 // Painel da plataforma (o dono da plataforma — você). Protegido por authGuard +
@@ -26,7 +27,7 @@ export const platformController = {
     // ainda não está ligado).
     async provisionOrg(c: Context<AppEnv>) {
         const body = provisionOwnerSchema.parse(await c.req.json());
-        const result = await adminService.provisionOwner(c.get("db"), body);
+        const result = await adminService.provisionOwner(c.get("db"), body, emailConfigFromEnv(c.env));
         return c.json(result, 201);
     },
 };

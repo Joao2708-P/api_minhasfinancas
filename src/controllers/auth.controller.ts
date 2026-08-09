@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { loginSchema, forgotSchema, verifyCodeSchema, resetSchema } from "../schemas/auth.schema";
 import { authService, resolveAccountType } from "../services/auth.service";
+import { emailConfigFromEnv } from "../lib/email";
 import type { AppEnv } from "../types";
 
 export const authController = {
@@ -20,11 +21,20 @@ export const authController = {
     async forgot(c: Context<AppEnv>) {
         const body = forgotSchema.parse(await c.req.json());
 
-        await authService.forgot(c.get("db"), body.email);
+        const code = await authService.forgot(
+            c.get("db"),
+            body.email,
+            emailConfigFromEnv(c.env),
+        );
 
-        return c.json({
+        const payload: { message: string; code?: string } = {
             message: "Se o e-mail existir, enviamos um código para redefinir a senha.",
-        });
+        };
+        // Homologação sem e-mail real: expõe o código para completar o smoke test.
+        // NUNCA ligar em produção (vaza o código e a existência do e-mail).
+        if (c.env.DEV_EXPOSE_CODES === "true" && code) payload.code = code;
+
+        return c.json(payload);
     },
 
     // Etapa 1: valida o código (sem consumir). Front libera a tela de nova senha.

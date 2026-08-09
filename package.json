@@ -5,6 +5,7 @@
     "dev": "wrangler dev",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply minhas_financas --local",
+    "db:migrate:remote": "wrangler d1 migrations apply minhas_financas --remote",
     "db:studio": "drizzle-kit studio",
     "db:seed": "wrangler d1 execute minhas_financas --local --file=./src/database/seed.sql",
     "deploy": "wrangler deploy --minify",

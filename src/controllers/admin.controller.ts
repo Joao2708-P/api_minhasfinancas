@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { provisionOwnerSchema, provisionPlatformAdminSchema } from "../schemas/admin.schema";
 import { adminService } from "../services/admin.service";
+import { emailConfigFromEnv } from "../lib/email";
 import type { AppEnv } from "../types";
 
 export const adminController = {
@@ -9,7 +10,7 @@ export const adminController = {
     async provision(c: Context<AppEnv>) {
         const body = provisionOwnerSchema.parse(await c.req.json());
 
-        const result = await adminService.provisionOwner(c.get("db"), body);
+        const result = await adminService.provisionOwner(c.get("db"), body, emailConfigFromEnv(c.env));
 
         return c.json(result, 201);
     },
@@ -19,7 +20,7 @@ export const adminController = {
     async provisionPlatformAdmin(c: Context<AppEnv>) {
         const body = provisionPlatformAdminSchema.parse(await c.req.json());
 
-        const result = await adminService.provisionPlatformAdmin(c.get("db"), body);
+        const result = await adminService.provisionPlatformAdmin(c.get("db"), body, emailConfigFromEnv(c.env));
 
         return c.json(result, 201);
     },

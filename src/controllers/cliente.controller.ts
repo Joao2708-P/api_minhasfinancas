@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import { createClienteSchema, clienteAccessSchema } from "../schemas";
 import { clienteService } from "../services/cliente.service";
+import { emailConfigFromEnv } from "../lib/email";
 import { NotFoundError } from "../errors/errors";
 import type { AppEnv } from "../types";
 
@@ -43,6 +44,7 @@ export const clienteController = {
             c.get("organizacaoId"),
             id,
             body,
+            emailConfigFromEnv(c.env),
         );
         return c.json(result, 201);
     },

@@ -7,7 +7,7 @@ import type { ActiveMembro } from "../types";
 import { BadRequestError, ConflictError, NotFoundError } from "../errors/errors";
 import { assertMembroPodeAcessarCliente } from "../lib/tenant";
 import { hashPassword, generateTempPassword } from "../lib/password";
-import { sendInvite } from "../lib/email";
+import { sendInvite, type EmailConfig } from "../lib/email";
 
 export const clienteService = {
     async create(db: Database, orgId: string, input: CreateClienteInput) {
@@ -42,7 +42,7 @@ export const clienteService = {
     // Cria o LOGIN (portal) de um cliente existente: cria o `users` com senha (dada
     // ou gerada) e vincula em cliente.usuario_id. O cliente recebe um convite por
     // e-mail com e-mail+senha e entra direto; a resposta devolve a senha p/ repasse.
-    async createAccess(db: Database, orgId: string, clienteId: string, input: ClienteAccessInput) {
+    async createAccess(db: Database, orgId: string, clienteId: string, input: ClienteAccessInput, emailConfig: EmailConfig) {
         const clienteRow = await db.query.cliente.findFirst({
             where: and(eq(cliente.id, clienteId), eq(cliente.organizacao_id, orgId)),
         });
@@ -74,7 +74,7 @@ export const clienteService = {
             db.update(cliente).set({ user_id: userId, updateAt: new Date() }).where(eq(cliente.id, clienteId)),
         ]);
 
-        await sendInvite({ to: input.email, email: input.email, password });
+        await sendInvite({ to: input.email, email: input.email, password }, emailConfig);
 
         return { cliente_id: clienteId, user_id: userId, email: input.email, password };
     },

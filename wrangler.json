@@ -1,15 +1,16 @@
 {
+    "name": "minhas-financas-api",
     "main": "src/index.ts",
     "compatibility_date": "2026-07-10",
     "vars": {
-        "JWT_SECRET": "dev-only-troque-em-producao",
-        "ADMIN_TOKEN": "dev-only-admin-troque-em-producao"
+        "CORS_ORIGINS": "",
+        "EMAIL_FROM": "Minhas Finanças <onboarding@resend.dev>"
     },
     "d1_databases": [
         {
             "binding": "DB",
             "database_name": "minhas_financas",
-            "database_id": "e3f1b2c3-4d5e-6789-abcd-ef0123456789",
+            "database_id": "PREENCHER_COM_O_ID_DO_wrangler_d1_create",
             "migrations_dir": "./migrations"
         }
     ],

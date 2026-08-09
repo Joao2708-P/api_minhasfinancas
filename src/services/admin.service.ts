@@ -5,7 +5,7 @@ import { users, organizacao, membro } from "../database/schema";
 import type { ProvisionOwnerInput, ProvisionPlatformAdminInput } from "../schemas/admin.schema";
 import { ConflictError } from "../errors/errors";
 import { hashPassword, generateTempPassword } from "../lib/password";
-import { sendInvite } from "../lib/email";
+import { sendInvite, type EmailConfig } from "../lib/email";
 
 export const adminService = {
     // Cria o dono (usuário) + a organização + o vínculo owner num batch atômico.
@@ -15,7 +15,7 @@ export const adminService = {
     // A senha já é DEFINIDA aqui: a que você informou, ou uma temporária gerada.
     // O cliente recebe um convite por e-mail com e-mail+senha e entra direto — a
     // resposta também devolve a senha para você poder repassar.
-    async provisionOwner(db: Database, input: ProvisionOwnerInput) {
+    async provisionOwner(db: Database, input: ProvisionOwnerInput, emailConfig: EmailConfig) {
         const duplicateEmail = await db.query.users.findFirst({
             where: eq(users.email, input.email),
         });
@@ -59,7 +59,7 @@ export const adminService = {
         ]);
 
         // "Envia" o convite (fora do batch: envolve e-mail).
-        await sendInvite({ to: input.email, email: input.email, password, orgName: input.org_name });
+        await sendInvite({ to: input.email, email: input.email, password, orgName: input.org_name }, emailConfig);
 
         const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
         const org = await db.query.organizacao.findFirst({ where: eq(organizacao.id, orgId) });
@@ -73,7 +73,7 @@ export const adminService = {
     // Bootstrap do administrador da plataforma (você): cria o usuário com
     // platform_admin = true. Também com senha (dada ou gerada) + convite.
     // Gated pelo ADMIN_TOKEN — é como o primeiro admin nasce.
-    async provisionPlatformAdmin(db: Database, input: ProvisionPlatformAdminInput) {
+    async provisionPlatformAdmin(db: Database, input: ProvisionPlatformAdminInput, emailConfig: EmailConfig) {
         const duplicateEmail = await db.query.users.findFirst({
             where: eq(users.email, input.email),
         });
@@ -102,7 +102,7 @@ export const adminService = {
             })
             .returning();
 
-        await sendInvite({ to: user.email, email: user.email, password });
+        await sendInvite({ to: user.email, email: user.email, password }, emailConfig);
 
         const { password: _p, ...safeUser } = user;
         return { user: safeUser, password };

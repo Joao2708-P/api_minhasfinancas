@@ -7,7 +7,7 @@ import { ConflictError, UnauthorizedError } from "../errors/errors";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { signToken } from "../lib/jwt";
 import { generateCode, codeExpiry } from "../lib/accessCode";
-import { sendAccessCode, type AccessCodePurpose } from "../lib/email";
+import { sendAccessCode, type AccessCodePurpose, type EmailConfig } from "../lib/email";
 
 // Tipo de conta usado pelo front para rotear ao dashboard certo, resolvido no
 // login/boot (não por sondagem de endpoints):
@@ -44,6 +44,7 @@ export async function issueAccessCode(
     db: Database,
     user: { id: string; email: string },
     purpose: AccessCodePurpose,
+    email: EmailConfig,
 ): Promise<string> {
     const code = generateCode();
     const code_hash = await hashPassword(code);
@@ -55,7 +56,7 @@ export async function issueAccessCode(
         expiresAt: codeExpiry(),
     });
 
-    await sendAccessCode({ to: user.email, code, purpose });
+    await sendAccessCode({ to: user.email, code, purpose }, email);
     return code;
 }
 
@@ -126,15 +127,18 @@ export const authService = {
 
     // "Esqueci minha senha" / primeiro acesso. SEMPRE resolve sem erro: se o e-mail
     // existir, emite um código; se não, não faz nada (não vaza existência).
-    async forgot(db: Database, email: string) {
+    // Devolve o código cru para o chamador. O controller SÓ o expõe na resposta
+    // quando DEV_EXPOSE_CODES está ligado (homologação sem e-mail real); em produção
+    // fica interno (não vaza existência do e-mail nem o código).
+    async forgot(db: Database, email: string, emailConfig: EmailConfig): Promise<string | undefined> {
         const user = await db.query.users.findFirst({
             where: eq(users.email, email),
         });
-        if (user) {
-            // Primeiro acesso reusa o mesmo fluxo; o propósito só rotula o e-mail.
-            const purpose: AccessCodePurpose = user.mustReset ? "first_access" : "reset";
-            await issueAccessCode(db, user, purpose);
-        }
+        if (!user) return undefined;
+
+        // Primeiro acesso reusa o mesmo fluxo; o propósito só rotula o e-mail.
+        const purpose: AccessCodePurpose = user.mustReset ? "first_access" : "reset";
+        return issueAccessCode(db, user, purpose, emailConfig);
     },
 
     // ETAPA 1 do primeiro acesso / recuperação: valida o código SEM consumi-lo.
