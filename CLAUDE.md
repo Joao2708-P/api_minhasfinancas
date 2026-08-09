@@ -94,11 +94,13 @@ Lance as classes de `src/errors/errors.ts` (`AppError`, `NotFoundError`, `Confli
 
 ## Configuração de ambiente
 
-- `wrangler.json`: binding D1 `DB`, binding R2 `BUCKET`, e `vars.JWT_SECRET` (valor **apenas de dev** — em produção use `wrangler secret put JWT_SECRET`).
-- Antes de rodar localmente é preciso (comandos que o USUÁRIO executa): gerar/aplicar a migration, criar o bucket R2 (`minhas-financas-extratos`) e opcionalmente aplicar o `seed.sql`.
+- `wrangler.json`: binding D1 `DB`, binding R2 `BUCKET`, e `vars` **não-secretas** (`CORS_ORIGINS`, `EMAIL_FROM`). Os **segredos** (`JWT_SECRET`, `ADMIN_TOKEN`, `RESEND_API_KEY`) **não** ficam no `wrangler.json`: em produção via `wrangler secret put <NOME>`; em dev local no `.dev.vars` (gitignored).
+- E-mail transacional via **Resend** (`lib/email.ts`): usa `RESEND_API_KEY` + `EMAIL_FROM`. Sem a chave, cai num stub que só loga no console. Entrega é best-effort (não derruba o fluxo) e falhas são logadas.
+- Antes de rodar localmente é preciso (comandos que o USUÁRIO executa): gerar/aplicar a migration e criar o bucket R2 (`minhas-financas-extratos`). O `seed.sql` é single-tenant (legado) — **não** aplicar no schema multi-tenant.
+- Deploy: `pnpm deploy` (Worker). Runbook completo de homologação (D1/R2/secrets/CORS/front) em `HOMOLOGACAO.md` na raiz do workspace.
 
 ## Pontos de atenção conhecidos
 
-- A migration em `migrations/` está **desatualizada** em relação a `schema.ts` (nomes/colunas de `categoria`, `extrato`, `meta`, `transacao`). É preciso regerar (`db:generate`) e aplicar antes de usar.
-- `cors()` está aberto a qualquer origem — adequado a dev; restrinja em produção.
+- Migrations `0000`–`0003` estão **em sincronia** com `schema.ts` (multi-tenant, branding, `codigo_acesso`). Confirme com `pnpm db:generate` (não deve gerar migration nova). Sempre regere após mudar o schema.
+- `cors()` usa **allowlist** via `CORS_ORIGINS` (CSV); vazio → cai no allowlist de dev (localhost). Libera os headers de tenant (`X-Org-Id`/`X-Cliente-Id`) no preflight.
 - `better-sqlite3` ainda consta nas dependências, mas não é usado (o acesso é 100% via D1). Pode ser removido em uma limpeza futura.
