@@ -4,12 +4,20 @@ import { AppError } from "./errors";
 
 export const errorHandler: ErrorHandler = (err, c)  => {
     if(err instanceof ZodError) {
+        // Detalha quais campos falharam. Sem isto o cliente só recebe "Dados
+        // inválidos" e não sabe o que corrigir. `message` já traz as mensagens
+        // (o front exibe `error.message` direto); `fields` carrega o path por campo.
+        const fields = err.issues.map((issue) => ({
+            field: issue.path.join('.') || '(raiz)',
+            message: issue.message,
+        }))
+        const message = fields.map((f) => f.message).join('; ') || 'Dados inválidos'
         return c.json(
             {
                 error: {
                     code: 'VALIDATION_ERROR',
-                    message: 'Dados inválidos',
-
+                    message,
+                    fields,
                 },
             },
             400
