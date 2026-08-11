@@ -11,7 +11,12 @@ export const authController = {
     async login(c: Context<AppEnv>) {
         const body = loginSchema.parse(await c.req.json());
 
-        const result = await authService.login(c.get("db"), c.env.JWT_SECRET, body);
+        const result = await authService.login(
+            c.get("db"),
+            c.env.JWT_SECRET,
+            body,
+            emailConfigFromEnv(c.env),
+        );
 
         return c.json(result);
     },

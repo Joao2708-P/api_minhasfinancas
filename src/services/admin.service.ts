@@ -44,6 +44,9 @@ export const adminService = {
                 email: input.email,
                 cpf: input.cpf,
                 password: passwordHash,
+                // Senha acima é TEMPORÁRIA: no primeiro login o fluxo de código
+                // força o cliente a definir a própria senha (ver authService.login).
+                mustReset: true,
             }),
             db.insert(organizacao).values({
                 id: orgId,

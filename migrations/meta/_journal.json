@@ -29,6 +29,13 @@
       "when": 1786149098683,
       "tag": "0003_clever_mother_askani",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786752000000,
+      "tag": "0004_add_cliente_status",
+      "breakpoints": true
     }
   ]
 }

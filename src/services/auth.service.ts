@@ -105,7 +105,7 @@ export const authService = {
         return { user: safeUser, token };
     },
 
-    async login(db: Database, secret: string, input: LoginInput) {
+    async login(db: Database, secret: string, input: LoginInput, emailConfig: EmailConfig) {
         const user = await db.query.users.findFirst({
             where: eq(users.email, input.email),
         });
@@ -117,6 +117,14 @@ export const authService = {
 
         const ok = await verifyPassword(input.password, user.password);
         if (!ok) throw invalid;
+
+        // Primeiro acesso (ou reset forçado): a senha usada aqui é a temporária do
+        // convite. Não emitimos token — disparamos o código de primeiro acesso e
+        // sinalizamos ao front para abrir a tela de código (definir a senha própria).
+        if (user.mustReset) {
+            await issueAccessCode(db, user, "first_access", emailConfig);
+            return { mustReset: true as const, email: user.email };
+        }
 
         const { password, ...safeUser } = user;
         const token = await signToken(user.id, secret);

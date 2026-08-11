@@ -21,6 +21,10 @@ interface CloudflareBindings {
     // Remetente dos e-mails. Ex.: "Minhas Finanças <no-reply@seudominio.com>".
     // Sem domínio verificado no Resend, use o padrão que só entrega ao dono da conta.
     EMAIL_FROM?: string;
+    // URL pública do dashboard (front) — usada nos links dos e-mails (convite,
+    // primeiro acesso). Ex.: "https://app.seudominio.com". Ausente → default local
+    // (http://localhost:5173). Definir em produção quando a URL estiver fechada.
+    APP_URL?: string;
     // Homologação SEM e-mail real: quando "true", POST /auth/forgot devolve o código
     // na resposta para completar o smoke test. NUNCA ligar em produção (vaza código).
     DEV_EXPOSE_CODES?: string;

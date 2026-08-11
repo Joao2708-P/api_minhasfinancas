@@ -16,20 +16,25 @@ export type AccessCodePurpose = "first_access" | "reset";
 export interface EmailConfig {
     apiKey?: string;   // RESEND_API_KEY — ausente => stub de log (dev).
     from: string;      // EMAIL_FROM — ex.: "Minhas Finanças <no-reply@seudominio.com>".
+    appUrl: string;    // APP_URL — base do dashboard, p/ os links dos e-mails.
 }
 
 // Remetente compartilhado do Resend: funciona SEM verificar domínio, mas só entrega
 // para o e-mail dono da conta Resend. Bom para o primeiro teste; troque por um
 // remetente de domínio verificado para enviar a terceiros.
 const DEFAULT_FROM = "Minhas Finanças <onboarding@resend.dev>";
+// Front local (Vite) — default enquanto a URL de produção não está definida.
+const DEFAULT_APP_URL = "http://localhost:5173";
 
 export function emailConfigFromEnv(env: {
     RESEND_API_KEY?: string;
     EMAIL_FROM?: string;
+    APP_URL?: string;
 }): EmailConfig {
     return {
         apiKey: env.RESEND_API_KEY,
         from: env.EMAIL_FROM?.trim() || DEFAULT_FROM,
+        appUrl: (env.APP_URL?.trim() || DEFAULT_APP_URL).replace(/\/$/, ""),
     };
 }
 
@@ -100,12 +105,24 @@ export interface SendInviteInput {
     orgName?: string;   // marca/organização exibida no convite (white-label)
 }
 
-// Convite de primeiro acesso: manda ao cliente o e-mail + a senha para ele entrar.
+// Convite de primeiro acesso: leva o cliente ao dashboard para o PRIMEIRO ACESSO.
+// A senha enviada é TEMPORÁRIA e serve só para iniciar: ao logar, o sistema detecta
+// o primeiro acesso, envia um código por e-mail e o cliente define a própria senha.
 // Best-effort (não lança) — o chamador também devolve a senha na resposta como fallback.
 export async function sendInvite(input: SendInviteInput, config: EmailConfig): Promise<void> {
     const marca = input.orgName ? ` na ${input.orgName}` : "";
     const subject = `Seu acesso${marca}`;
-    const text = `Sua conta foi criada.\n\nE-mail: ${input.email}\nSenha: ${input.password}\n\nRecomendamos trocar a senha no primeiro acesso.`;
-    const html = `<p>Sua conta foi criada.</p><p><b>E-mail:</b> ${input.email}<br/><b>Senha:</b> ${input.password}</p><p>Recomendamos trocar a senha no primeiro acesso.</p>`;
+    const link = config.appUrl;
+    const text =
+        `Sua conta foi criada${marca}.\n\n` +
+        `Acesse ${link} e entre com:\n` +
+        `E-mail: ${input.email}\n` +
+        `Senha temporária: ${input.password}\n\n` +
+        `No primeiro acesso vamos enviar um código para este e-mail para você definir a sua senha definitiva.`;
+    const html =
+        `<p>Sua conta foi criada${marca}.</p>` +
+        `<p><a href="${link}">Acessar o painel</a> e entrar com:</p>` +
+        `<p><b>E-mail:</b> ${input.email}<br/><b>Senha temporária:</b> ${input.password}</p>` +
+        `<p>No primeiro acesso vamos enviar um código para este e-mail para você definir a sua senha definitiva.</p>`;
     await deliver(config, input.to, subject, html, text);
 }
