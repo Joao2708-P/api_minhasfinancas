@@ -51,7 +51,7 @@ export const transactionController = {
     async createTransaction(c: Context<AppEnv>) {
         const body = createTransactionSchema.parse(await c.req.json());
 
-        const tx = await transactionService.create(c.get("db"), scopeOf(c), body);
+        const tx = await transactionService.create(c.get("db"), scopeOf(c), body, c.get("userId"));
         return c.json(tx, 201);
     },
 
@@ -59,14 +59,14 @@ export const transactionController = {
         const id = c.req.param("id")!;
         const body = updateTransactionSchema.parse(await c.req.json());
 
-        const tx = await transactionService.update(c.get("db"), scopeOf(c), id, body);
+        const tx = await transactionService.update(c.get("db"), scopeOf(c), id, body, c.get("userId"));
         return c.json(tx);
     },
 
     async deleteTransaction(c: Context<AppEnv>) {
         const id = c.req.param("id")!;
 
-        const deleted = await transactionService.delete(c.get("db"), scopeOf(c), id);
+        const deleted = await transactionService.delete(c.get("db"), scopeOf(c), id, c.get("userId"));
         if (!deleted) throw new NotFoundError("Transação");
 
         return c.json(deleted);

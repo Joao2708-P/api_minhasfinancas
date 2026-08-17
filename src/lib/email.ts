@@ -22,7 +22,7 @@ export interface EmailConfig {
 // Remetente compartilhado do Resend: funciona SEM verificar domínio, mas só entrega
 // para o e-mail dono da conta Resend. Bom para o primeiro teste; troque por um
 // remetente de domínio verificado para enviar a terceiros.
-const DEFAULT_FROM = "Minhas Finanças <onboarding@resend.dev>";
+const DEFAULT_FROM = "Metria Finanças <onboarding@resend.dev>";
 // Front local (Vite) — default enquanto a URL de produção não está definida.
 const DEFAULT_APP_URL = "http://localhost:5173";
 

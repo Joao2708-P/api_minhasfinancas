@@ -8,6 +8,7 @@
     "db:migrate:remote": "wrangler d1 migrations apply minhas_financas --remote",
     "db:studio": "drizzle-kit studio",
     "db:seed": "wrangler d1 execute minhas_financas --local --file=./src/database/seed.sql",
+    "seed:admin": "node seed-admin.mjs",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings",
     "test": "vitest run",

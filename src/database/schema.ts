@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { createId } from "@paralleldrive/cuid2";
 
 /**
@@ -96,6 +96,13 @@ export const membro = sqliteTable(
         organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
         user_id: text('usuario_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
         role: text('papel', { enum: ['owner', 'admin', 'planner', 'viewer'] }).notNull(),
+        // Papel customizado da org (permissões configuráveis). NULLABLE por design:
+        // null = usa o conjunto fixo do papel-base `role` (comportamento legado, 100%
+        // retrocompatível). Preenchido = as permissões vêm de `papel_permissao`.
+        // O `role` continua governando ESCOPO (planner→só seus clientes) e a invariante
+        // de ≥1 owner, independente do papel customizado. `set null`: apagar o papel não
+        // apaga o membro, só o devolve ao conjunto fixo do role.
+        papel_id: text('papel_customizado_id').references(() => papel.id, { onDelete: 'set null' }),
         // 'invited' = convidado mas ainda não aceitou; 'revoked' = acesso removido sem apagar histórico.
         status: text('status', { enum: ['active', 'invited', 'revoked'] }).notNull().default('active'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
@@ -104,6 +111,42 @@ export const membro = sqliteTable(
     (table) => ({
         // Um único vínculo por usuário por organização.
         orgUserUnico: uniqueIndex('membro_org_user_unico').on(table.organizacao_id, table.user_id),
+    })
+);
+
+/* ------------------------------------------------------------------ */
+/* Papéis customizados (permissões configuráveis por organização)      */
+/* ------------------------------------------------------------------ */
+
+// Papel customizado criado pela própria org (ex.: "Contador Sênior", "Estagiário").
+// Os 4 papéis de SISTEMA (owner/admin/planner/viewer) NÃO ficam aqui — continuam
+// fixos no código (lib/permissions.ts) e não são editáveis. Esta tabela guarda só
+// os papéis ADICIONAIS. Um membro com `papel_id` apontando pra cá usa as permissões
+// de `papel_permissao`; sem `papel_id`, usa o conjunto fixo do seu `role`.
+export const papel = sqliteTable(
+    "papel", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
+        name: text('nome').notNull(),
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+        updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        // Nome de papel único DENTRO da org (orgs diferentes podem ter nomes iguais).
+        orgNomeUnico: uniqueIndex('papel_org_nome_unico').on(table.organizacao_id, table.name),
+    })
+);
+
+// Quais chaves de permissão um papel concede. O CATÁLOGO de chaves válidas é fixo
+// no código (lib/permissions.ts `ALL`) — isto só amarra papel→chave. PK composta
+// evita duplicar a mesma permissão no mesmo papel.
+export const papelPermissao = sqliteTable(
+    "papel_permissao", {
+        papel_id: text('papel_id').notNull().references(() => papel.id, { onDelete: 'cascade' }),
+        permission_key: text('chave_permissao').notNull(),
+    },
+    (table) => ({
+        pk: primaryKey({ columns: [table.papel_id, table.permission_key] }),
     })
 );
 
@@ -122,7 +165,11 @@ export const cliente = sqliteTable(
         status: text('status', { enum: ['ativo', 'arquivado'] }).notNull().default('ativo'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
-    }
+    },
+    (table) => ({
+        // Listagem de clientes é sempre por organização (filtro de tenant).
+        orgIdx: index('cliente_org_idx').on(table.organizacao_id),
+    })
 );
 
 /* ------------------------------------------------------------------ */
@@ -157,7 +204,11 @@ export const account = sqliteTable(
         balance: integer('saldo'),   // saldo de abertura, em centavos (saldo atual é derivado)
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
-    }
+    },
+    (table) => ({
+        // Todo acesso é filtrado por tenant (organizacao_id + cliente_id).
+        scopeIdx: index('conta_scope_idx').on(table.organizacao_id, table.cliente_id),
+    })
 );
 
 export const category = sqliteTable(
@@ -171,7 +222,10 @@ export const category = sqliteTable(
         color: text('cor'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
-    }
+    },
+    (table) => ({
+        scopeIdx: index('categoria_scope_idx').on(table.organizacao_id, table.cliente_id),
+    })
 );
 
 export const goal = sqliteTable(
@@ -186,7 +240,10 @@ export const goal = sqliteTable(
         color: text('cor'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
-    }
+    },
+    (table) => ({
+        scopeIdx: index('meta_scope_idx').on(table.organizacao_id, table.cliente_id),
+    })
 );
 
 export const transaction = sqliteTable(
@@ -202,7 +259,11 @@ export const transaction = sqliteTable(
         date: integer('data', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
-    }
+    },
+    (table) => ({
+        // Filtro por tenant + ordenação por data (listByScope ordena por data desc).
+        scopeDateIdx: index('transacao_scope_data_idx').on(table.organizacao_id, table.cliente_id, table.date),
+    })
 );
 
 export const extract = sqliteTable(
@@ -218,7 +279,109 @@ export const extract = sqliteTable(
         importedCount: integer('qtd_importada').notNull().default(0),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
-    }
+    },
+    (table) => ({
+        scopeIdx: index('extrato_scope_idx').on(table.organizacao_id, table.cliente_id),
+    })
+);
+
+/* ------------------------------------------------------------------ */
+/* Auditoria                                                           */
+/* ------------------------------------------------------------------ */
+
+// Trilha de auditoria: uma linha por escrita relevante (criação/edição/exclusão).
+// Gravada pelos services logo após a operação bem-sucedida (ver services/audit.service.ts).
+//   - usuario_id → users.id (NÃO membro.id): cobre também o admin da plataforma e
+//     eventos sem membro de org (ex.: provisionamento). Quem consulta cruza depois.
+//   - cliente_id é NULLABLE: eventos no nível da organização (branding, membros) não
+//     têm cliente. Em exclusão de cliente, o vínculo cai para null (set null) mas a
+//     linha de log permanece — auditoria não some quando o dado some.
+//   - dados_antes/dados_depois são JSON (string), já redigidos (sem senha/hash).
+export const logAuditoria = sqliteTable(
+    "log_auditoria", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
+        cliente_id: text('cliente_id').references(() => cliente.id, { onDelete: 'set null' }),
+        user_id: text('usuario_id').notNull().references(() => users.id),
+        action: text('acao', { enum: ['criado', 'atualizado', 'excluido'] }).notNull(),
+        entity: text('entidade').notNull(),        // nome lógico da tabela afetada, ex.: 'transacao'
+        entity_id: text('entidade_id').notNull(),
+        before: text('dados_antes'),               // JSON; null em criação
+        after: text('dados_depois'),               // JSON; null em exclusão
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        // Leitura da trilha: por org, ordenada por data desc (listAuditByOrg).
+        orgDateIdx: index('log_auditoria_org_data_idx').on(table.organizacao_id, table.createdAt),
+        // Filtro opcional por entidade/registro.
+        entityIdx: index('log_auditoria_entidade_idx').on(table.organizacao_id, table.entity, table.entity_id),
+    })
+);
+
+/* ------------------------------------------------------------------ */
+/* Cadastros (Fase 3) — escopados por organizacao + cliente            */
+/* ------------------------------------------------------------------ */
+
+// Parceiro comercial do NEGÓCIO do cliente (fornecedor/cliente dele). NÃO confundir
+// com a tabela `cliente` (que é o cliente do escritório). `tipo` é vocabulário de
+// domínio → fica em PT (não é status de ciclo de vida).
+export const parceiro = sqliteTable(
+    "parceiro", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
+        cliente_id: text('cliente_id').notNull().references(() => cliente.id, { onDelete: 'cascade' }),
+        name: text('nome').notNull(),
+        document: text('documento'),   // CPF ou CNPJ
+        type: text('tipo', { enum: ['cliente', 'fornecedor', 'ambos'] }).notNull(),
+        email: text('email'),
+        phone: text('telefone'),
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+        updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        scopeIdx: index('parceiro_scope_idx').on(table.organizacao_id, table.cliente_id),
+    })
+);
+
+// Funcionário do negócio do cliente. `status` é ciclo de vida → EN (decisão de
+// padronização, ver CHANGELOG-metria.md): 'active' | 'terminated'.
+export const funcionario = sqliteTable(
+    "funcionario", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
+        cliente_id: text('cliente_id').notNull().references(() => cliente.id, { onDelete: 'cascade' }),
+        name: text('nome').notNull(),
+        document: text('cpf').notNull(),
+        role: text('cargo'),
+        baseSalary: integer('salario_base').notNull(),   // centavos
+        hiredAt: integer('data_admissao', { mode: 'timestamp' }).notNull(),
+        terminatedAt: integer('data_demissao', { mode: 'timestamp' }),
+        status: text('status', { enum: ['active', 'terminated'] }).notNull().default('active'),
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+        updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        scopeIdx: index('funcionario_scope_idx').on(table.organizacao_id, table.cliente_id),
+    })
+);
+
+// Sócio do negócio do cliente. `equityShare` fracionário (0.5 = 50%). Alimenta o
+// patrimônio líquido do plano de contas (Fase 1) quando este existir.
+export const socio = sqliteTable(
+    "socio", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
+        cliente_id: text('cliente_id').notNull().references(() => cliente.id, { onDelete: 'cascade' }),
+        name: text('nome').notNull(),
+        document: text('cpf').notNull(),
+        equityShare: real('percentual_participacao').notNull(),   // ex.: 0.5 = 50%
+        joinedAt: integer('data_entrada', { mode: 'timestamp' }).notNull(),
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+        updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        scopeIdx: index('socio_scope_idx').on(table.organizacao_id, table.cliente_id),
+    })
 );
 
 /* ------------------------------------------------------------------ */
@@ -245,8 +408,19 @@ export const organizacaoRelations = relations(organizacao, ({ one, many }) => ({
 export const membroRelations = relations(membro, ({ one, many }) => ({
     organizacao: one(organizacao, { fields: [membro.organizacao_id], references: [organizacao.id] }),
     usuario: one(users, { fields: [membro.user_id], references: [users.id] }),
+    papel: one(papel, { fields: [membro.papel_id], references: [papel.id] }),
     // Clientes sob responsabilidade deste membro.
     clientesResponsavel: many(cliente),
+}));
+
+export const papelRelations = relations(papel, ({ one, many }) => ({
+    organizacao: one(organizacao, { fields: [papel.organizacao_id], references: [organizacao.id] }),
+    permissoes: many(papelPermissao),
+    membros: many(membro),
+}));
+
+export const papelPermissaoRelations = relations(papelPermissao, ({ one }) => ({
+    papel: one(papel, { fields: [papelPermissao.papel_id], references: [papel.id] }),
 }));
 
 export const clienteRelations = relations(cliente, ({ one, many }) => ({
@@ -291,4 +465,25 @@ export const extractRelations = relations(extract, ({ one }) => ({
     organizacao: one(organizacao, { fields: [extract.organizacao_id], references: [organizacao.id] }),
     cliente: one(cliente, { fields: [extract.cliente_id], references: [cliente.id] }),
     account: one(account, { fields: [extract.account_id], references: [account.id] }),
+}));
+
+export const logAuditoriaRelations = relations(logAuditoria, ({ one }) => ({
+    organizacao: one(organizacao, { fields: [logAuditoria.organizacao_id], references: [organizacao.id] }),
+    cliente: one(cliente, { fields: [logAuditoria.cliente_id], references: [cliente.id] }),
+    usuario: one(users, { fields: [logAuditoria.user_id], references: [users.id] }),
+}));
+
+export const parceiroRelations = relations(parceiro, ({ one }) => ({
+    organizacao: one(organizacao, { fields: [parceiro.organizacao_id], references: [organizacao.id] }),
+    cliente: one(cliente, { fields: [parceiro.cliente_id], references: [cliente.id] }),
+}));
+
+export const funcionarioRelations = relations(funcionario, ({ one }) => ({
+    organizacao: one(organizacao, { fields: [funcionario.organizacao_id], references: [organizacao.id] }),
+    cliente: one(cliente, { fields: [funcionario.cliente_id], references: [cliente.id] }),
+}));
+
+export const socioRelations = relations(socio, ({ one }) => ({
+    organizacao: one(organizacao, { fields: [socio.organizacao_id], references: [organizacao.id] }),
+    cliente: one(cliente, { fields: [socio.cliente_id], references: [cliente.id] }),
 }));

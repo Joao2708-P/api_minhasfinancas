@@ -18,7 +18,7 @@ export const clienteController = {
 
     async createCliente(c: Context<AppEnv>) {
         const body = createClienteSchema.parse(await c.req.json());
-        const created = await clienteService.create(c.get("db"), c.get("organizacaoId"), body);
+        const created = await clienteService.create(c.get("db"), c.get("organizacaoId"), body, c.get("userId"));
         return c.json(created, 201);
     },
 
@@ -45,6 +45,7 @@ export const clienteController = {
             id,
             body,
             emailConfigFromEnv(c.env),
+            c.get("userId"),
         );
         return c.json(result, 201);
     },

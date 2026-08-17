@@ -31,7 +31,7 @@ export const goalController = {
     async createGoal(c: Context<AppEnv>) {
         const body = createGoalSchema.parse(await c.req.json());
 
-        const g = await goalService.create(c.get("db"), scopeOf(c), body);
+        const g = await goalService.create(c.get("db"), scopeOf(c), body, c.get("userId"));
         return c.json(g, 201);
     },
 
@@ -43,14 +43,14 @@ export const goalController = {
         const existing = await goalService.findByIdOwned(c.get("db"), s, id);
         if (!existing) throw new NotFoundError("Meta");
 
-        const g = await goalService.update(c.get("db"), s, id, body);
+        const g = await goalService.update(c.get("db"), s, id, body, c.get("userId"));
         return c.json(g);
     },
 
     async deleteGoal(c: Context<AppEnv>) {
         const id = c.req.param("id")!;
 
-        const deleted = await goalService.delete(c.get("db"), scopeOf(c), id);
+        const deleted = await goalService.delete(c.get("db"), scopeOf(c), id, c.get("userId"));
         if (!deleted) throw new NotFoundError("Meta");
 
         return c.json(deleted);

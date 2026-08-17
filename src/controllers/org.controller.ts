@@ -20,7 +20,7 @@ export const orgController = {
     // Sob orgContext + org:branding — atualiza a marca da org ativa.
     async updateBranding(c: Context<AppEnv>) {
         const body = updateBrandingSchema.parse(await c.req.json());
-        const org = await orgService.updateBranding(c.get("db"), c.get("organizacaoId"), body);
+        const org = await orgService.updateBranding(c.get("db"), c.get("organizacaoId"), body, c.get("userId"));
         return c.json(org);
     },
 

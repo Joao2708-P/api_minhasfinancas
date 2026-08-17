@@ -54,7 +54,14 @@ migrations/               # migrations geradas pelo drizzle-kit
 
 - Schema em `src/database/schema.ts` (fonte da verdade). Convenção: **propriedades em inglês** (`name`, `email`, `createdAt`, `user_id`) mapeadas para **colunas em português** (`nome`, `email`, `criado_em`, `usuario_id`).
 - Toda tabela tem: `id` (cuid2, PK), `criado_em` e `atualizado_em` (timestamps, default `strftime('%s','now')`).
-- Tabelas: `usuario`, `tipo_conta`, `conta`, `categoria`, `meta`, `transacao`, `extrato`.
+- Tabelas:
+  - Identidade/tenant: `usuario`, `codigo_acesso`, `organizacao`, `membro`, `cliente`.
+  - Permissões configuráveis (Fase 2): `papel`, `papel_permissao` (membro tem `papel_customizado_id` opcional).
+  - Auditoria (Fase 2): `log_auditoria` (uma linha por escrita relevante; ver `services/audit.service.ts`).
+  - Financeiro (escopo org+cliente): `tipo_conta` (lookup global), `conta`, `categoria`, `meta`, `transacao`, `extrato`.
+  - Cadastros (Fase 3, escopo org+cliente): `parceiro`, `funcionario`, `socio`.
+- **Valores de status**: idiomas misturados (EN em membro/organizacao/extrato; PT em cliente/log_auditoria). Direção-alvo p/ novos = EN; padronizar os outliers PT é migração destrutiva pendente de decisão (ver `CHANGELOG-metria.md`).
+- Índices de tenant `(organizacao_id[, cliente_id])` nas tabelas de dados + no `log_auditoria` (migration 0006).
 - Valores monetários são armazenados como **inteiros em centavos** (`integer`). Use `lib/money.ts`.
 - **Saldo da conta é derivado**, não persistido como "verdade": `conta.saldo` é o saldo de abertura; o saldo atual = abertura + Σ(entradas) − Σ(saídas). Ver `accountService.currentBalance`.
 - Transações: `valor` sempre positivo; o sinal vem de `tipo` (`in`/`out`). O service valida que a conta e a categoria pertencem ao usuário antes de inserir.

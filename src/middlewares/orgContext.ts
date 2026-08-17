@@ -1,9 +1,9 @@
 import type { MiddlewareHandler } from "hono";
 import { and, eq } from "drizzle-orm";
 import type { AppEnv } from "../types";
-import { membro as membroTable, organizacao } from "../database/schema";
+import { membro as membroTable, organizacao, papelPermissao } from "../database/schema";
 import { BadRequestError, ForbiddenError } from "../errors/errors";
-import { can, type Permission } from "../lib/permissions";
+import { canWith, resolvePermissions, type Permission } from "../lib/permissions";
 import { assertClienteNaOrg, assertMembroPodeAcessarCliente } from "../lib/tenant";
 
 // Resolve a organização ativa (header X-Org-Id) e carrega o membro ativo.
@@ -34,16 +34,29 @@ export const orgContext: MiddlewareHandler<AppEnv> = async (c, next) => {
     });
     if (!m) throw new ForbiddenError("Você não é membro ativo desta organização");
 
+    // Permissões efetivas: se o membro tem papel customizado, as chaves vêm de
+    // `papel_permissao`; senão, `resolvePermissions` cai no conjunto fixo do `role`.
+    // Resolvido UMA vez por request e guardado no contexto (o requirePermission de
+    // cada rota só consulta, sem novo hit no banco).
+    let customKeys: string[] | null = null;
+    if (m.papel_id) {
+        const rows = await db.query.papelPermissao.findMany({
+            where: eq(papelPermissao.papel_id, m.papel_id),
+        });
+        customKeys = rows.map((r) => r.permission_key);
+    }
+    const permissions = resolvePermissions(m.role, customKeys);
+
     c.set("organizacaoId", orgId);
-    c.set("membro", { id: m.id, role: m.role, user_id: m.user_id });
+    c.set("membro", { id: m.id, role: m.role, user_id: m.user_id, permissions });
 
     await next();
 };
 
-// Bloqueia com 403 quem não tem a permissão (checa permissão, não papel).
+// Bloqueia com 403 quem não tem a permissão (checa o conjunto efetivo já resolvido).
 export function requirePermission(perm: Permission): MiddlewareHandler<AppEnv> {
     return async (c, next) => {
-        if (!can(c.get("membro").role, perm)) {
+        if (!canWith(c.get("membro").permissions, perm)) {
             throw new ForbiddenError("Permissão insuficiente");
         }
         await next();

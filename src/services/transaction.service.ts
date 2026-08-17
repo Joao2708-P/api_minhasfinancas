@@ -4,6 +4,7 @@ import { account, category, transaction } from "../database/schema";
 import type { CreateTransactionInput, UpdateTransactionInput } from "../schemas";
 import type { Scope } from "../types";
 import { ForbiddenError, NotFoundError } from "../errors/errors";
+import { recordAudit } from "./audit.service";
 
 export type TransactionFilters = {
     account_id?: string;
@@ -67,7 +68,7 @@ export const transactionService = {
         });
     },
 
-    async create(db: Database, s: Scope, input: CreateTransactionInput) {
+    async create(db: Database, s: Scope, input: CreateTransactionInput, actorUserId: string) {
         await assertAccountInScope(db, s, input.account_id);
         await assertCategoryInScope(db, s, input.category_id);
 
@@ -76,10 +77,15 @@ export const transactionService = {
             .values({ ...input, organizacao_id: s.orgId, cliente_id: s.clienteId })
             .returning();
 
+        await recordAudit(db, {
+            organizacao_id: s.orgId, cliente_id: s.clienteId, user_id: actorUserId,
+            action: "criado", entity: "transacao", entity_id: created.id, after: created,
+        });
+
         return created;
     },
 
-    async update(db: Database, s: Scope, id: string, input: UpdateTransactionInput) {
+    async update(db: Database, s: Scope, id: string, input: UpdateTransactionInput, actorUserId: string) {
         const existing = await this.findByIdOwned(db, s, id);
         if (!existing) throw new NotFoundError("Transação");
 
@@ -92,14 +98,27 @@ export const transactionService = {
             .where(and(eq(transaction.id, id), inScope(s)))
             .returning();
 
+        await recordAudit(db, {
+            organizacao_id: s.orgId, cliente_id: s.clienteId, user_id: actorUserId,
+            action: "atualizado", entity: "transacao", entity_id: id, before: existing, after: updated,
+        });
+
         return updated;
     },
 
-    async delete(db: Database, s: Scope, id: string) {
+    async delete(db: Database, s: Scope, id: string, actorUserId: string) {
         const [deleted] = await db
             .delete(transaction)
             .where(and(eq(transaction.id, id), inScope(s)))
             .returning();
+
+        // `deleted` é a linha que existia (o "antes"); ausente = nada apagado, nada a logar.
+        if (deleted) {
+            await recordAudit(db, {
+                organizacao_id: s.orgId, cliente_id: s.clienteId, user_id: actorUserId,
+                action: "excluido", entity: "transacao", entity_id: id, before: deleted,
+            });
+        }
 
         return deleted;
     },

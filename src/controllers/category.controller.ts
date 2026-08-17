@@ -27,7 +27,7 @@ export const categoryController = {
     async createCategory(c: Context<AppEnv>) {
         const body = createCategorySchema.parse(await c.req.json());
 
-        const category = await CategoryService.create(c.get("db"), scopeOf(c), body);
+        const category = await CategoryService.create(c.get("db"), scopeOf(c), body, c.get("userId"));
         return c.json(category, 201);
     },
 
@@ -39,14 +39,14 @@ export const categoryController = {
         const existing = await CategoryService.findByIdOwned(c.get("db"), s, id);
         if (!existing) throw new NotFoundError("Categoria");
 
-        const category = await CategoryService.update(c.get("db"), s, id, body);
+        const category = await CategoryService.update(c.get("db"), s, id, body, c.get("userId"));
         return c.json(category);
     },
 
     async deleteCategory(c: Context<AppEnv>) {
         const id = c.req.param("id")!;
 
-        const categoryDelete = await CategoryService.delete(c.get("db"), scopeOf(c), id);
+        const categoryDelete = await CategoryService.delete(c.get("db"), scopeOf(c), id, c.get("userId"));
         if (!categoryDelete) throw new NotFoundError("Categoria");
 
         return c.json(categoryDelete);

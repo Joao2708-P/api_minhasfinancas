@@ -12,9 +12,14 @@ import { goalRoute } from "./goal.route";
 import { transactionRoute } from "./transaction.route";
 import { extractRoute } from "./extract.route";
 import { reportRoute } from "./report.route";
+import { parceiroRoute } from "./parceiro.route";
+import { funcionarioRoute } from "./funcionario.route";
+import { socioRoute } from "./socio.route";
 import { orgRoute } from "./org.route";
 import { membroRoute } from "./membro.route";
 import { clienteRoute } from "./cliente.route";
+import { papelRoute } from "./papel.route";
+import { auditRoute } from "./audit.route";
 import { orgSettingsRoute } from "./orgSettings.route";
 import { publicRoute } from "./public.route";
 import { adminRoute } from "./admin.route";
@@ -56,6 +61,8 @@ const orgScoped = new Hono<AppEnv>();
 orgScoped.use("*", orgContext);
 orgScoped.route("/membros", membroRoute);
 orgScoped.route("/clientes", clienteRoute);
+orgScoped.route("/roles", papelRoute);
+orgScoped.route("/audit", auditRoute);
 orgScoped.route("/org", orgSettingsRoute);
 protectedRoutes.route("/", orgScoped);
 
@@ -70,6 +77,9 @@ scoped.route("/goals", goalRoute);
 scoped.route("/transactions", transactionRoute);
 scoped.route("/extracts", extractRoute);
 scoped.route("/reports", reportRoute);
+scoped.route("/partners", parceiroRoute);
+scoped.route("/employees", funcionarioRoute);
+scoped.route("/shareholders", socioRoute);
 
 protectedRoutes.route("/", scoped);
 

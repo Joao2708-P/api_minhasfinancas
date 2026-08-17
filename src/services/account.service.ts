@@ -3,6 +3,7 @@ import type { Database } from "../database";
 import { account, transaction } from "../database/schema";
 import type { CreateAccountInput, UpdateAccountInput } from "../schemas";
 import type { Scope } from "../types";
+import { recordAudit } from "./audit.service";
 
 // Filtro de tenant: toda conta é escopada por organizacao_id + cliente_id.
 const inScope = (s: Scope) =>
@@ -47,30 +48,51 @@ export const accountService = {
         }));
     },
 
-    async create(db: Database, s: Scope, input: CreateAccountInput) {
+    async create(db: Database, s: Scope, input: CreateAccountInput, actorUserId: string) {
         const [created] = await db
             .insert(account)
             .values({ ...input, organizacao_id: s.orgId, cliente_id: s.clienteId })
             .returning();
 
+        await recordAudit(db, {
+            organizacao_id: s.orgId, cliente_id: s.clienteId, user_id: actorUserId,
+            action: "criado", entity: "conta", entity_id: created.id, after: created,
+        });
+
         return created;
     },
 
-    async update(db: Database, s: Scope, id: string, input: UpdateAccountInput) {
+    async update(db: Database, s: Scope, id: string, input: UpdateAccountInput, actorUserId: string) {
+        const before = await this.findByIdOwned(db, s, id);
+
         const [updated] = await db
             .update(account)
             .set({ ...input, updateAt: new Date() })
             .where(and(eq(account.id, id), inScope(s)))
             .returning();
 
+        if (updated) {
+            await recordAudit(db, {
+                organizacao_id: s.orgId, cliente_id: s.clienteId, user_id: actorUserId,
+                action: "atualizado", entity: "conta", entity_id: id, before, after: updated,
+            });
+        }
+
         return updated;
     },
 
-    async delete(db: Database, s: Scope, id: string) {
+    async delete(db: Database, s: Scope, id: string, actorUserId: string) {
         const [deleted] = await db
             .delete(account)
             .where(and(eq(account.id, id), inScope(s)))
             .returning();
+
+        if (deleted) {
+            await recordAudit(db, {
+                organizacao_id: s.orgId, cliente_id: s.clienteId, user_id: actorUserId,
+                action: "excluido", entity: "conta", entity_id: id, before: deleted,
+            });
+        }
 
         return deleted;
     },

@@ -8,9 +8,10 @@ import { BadRequestError, ConflictError, NotFoundError } from "../errors/errors"
 import { assertMembroPodeAcessarCliente } from "../lib/tenant";
 import { hashPassword, generateTempPassword } from "../lib/password";
 import { sendInvite, type EmailConfig } from "../lib/email";
+import { recordAudit } from "./audit.service";
 
 export const clienteService = {
-    async create(db: Database, orgId: string, input: CreateClienteInput) {
+    async create(db: Database, orgId: string, input: CreateClienteInput, actorUserId: string) {
         // Se informado, o responsável precisa ser um membro da MESMA org.
         if (input.responsavel_id) {
             const resp = await db.query.membro.findFirst({
@@ -28,6 +29,11 @@ export const clienteService = {
             })
             .returning();
 
+        await recordAudit(db, {
+            organizacao_id: orgId, cliente_id: created.id, user_id: actorUserId,
+            action: "criado", entity: "cliente", entity_id: created.id, after: created,
+        });
+
         return created;
     },
 
@@ -42,7 +48,7 @@ export const clienteService = {
     // Cria o LOGIN (portal) de um cliente existente: cria o `users` com senha (dada
     // ou gerada) e vincula em cliente.usuario_id. O cliente recebe um convite por
     // e-mail com e-mail+senha e entra direto; a resposta devolve a senha p/ repasse.
-    async createAccess(db: Database, orgId: string, clienteId: string, input: ClienteAccessInput, emailConfig: EmailConfig) {
+    async createAccess(db: Database, orgId: string, clienteId: string, input: ClienteAccessInput, emailConfig: EmailConfig, actorUserId: string) {
         const clienteRow = await db.query.cliente.findFirst({
             where: and(eq(cliente.id, clienteId), eq(cliente.organizacao_id, orgId)),
         });
@@ -75,6 +81,16 @@ export const clienteService = {
         ]);
 
         await sendInvite({ to: input.email, email: input.email, password }, emailConfig);
+
+        // Concessão de acesso ao portal: evento sensível. Loga o vínculo criado
+        // (a senha nunca entra no log — `recordAudit` redige, e aqui nem é passada).
+        await recordAudit(db, {
+            organizacao_id: orgId, cliente_id: clienteId, user_id: actorUserId,
+            action: "atualizado", entity: "cliente",
+            entity_id: clienteId,
+            before: { user_id: clienteRow.user_id },
+            after: { user_id: userId, email: input.email },
+        });
 
         return { cliente_id: clienteId, user_id: userId, email: input.email, password };
     },

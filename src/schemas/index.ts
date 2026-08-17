@@ -8,3 +8,7 @@ export * from "./extract.schema";
 export * from "./org.schema";
 export * from "./membro.schema";
 export * from "./cliente.schema";
+export * from "./papel.schema";
+export * from "./parceiro.schema";
+export * from "./funcionario.schema";
+export * from "./socio.schema";

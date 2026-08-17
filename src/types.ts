@@ -1,8 +1,11 @@
 import type { Database } from "./database";
-import type { Role } from "./lib/permissions";
+import type { Permission, Role } from "./lib/permissions";
 
 // Membro ativo resolvido pelo orgContext (organizacao_id + user_id, status active).
-export type ActiveMembro = { id: string; role: Role; user_id: string };
+// `permissions` = conjunto EFETIVO já resolvido (papel customizado OU conjunto fixo
+// do `role`). O `role` continua exposto porque governa o ESCOPO (planner→só seus
+// clientes) e a invariante de owner, que são independentes das permissões.
+export type ActiveMembro = { id: string; role: Role; user_id: string; permissions: Permission[] };
 
 // Escopo de tenant repassado aos services de dados financeiros.
 export type Scope = { orgId: string; clienteId: string };

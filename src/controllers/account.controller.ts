@@ -32,7 +32,7 @@ export const accountController = {
     async createAccount(c: Context<AppEnv>) {
         const body = createAccountSchema.parse(await c.req.json());
 
-        const acc = await accountService.create(c.get("db"), scopeOf(c), body);
+        const acc = await accountService.create(c.get("db"), scopeOf(c), body, c.get("userId"));
         return c.json(acc, 201);
     },
 
@@ -44,14 +44,14 @@ export const accountController = {
         const existing = await accountService.findByIdOwned(c.get("db"), s, id);
         if (!existing) throw new NotFoundError("Conta");
 
-        const acc = await accountService.update(c.get("db"), s, id, body);
+        const acc = await accountService.update(c.get("db"), s, id, body, c.get("userId"));
         return c.json(acc);
     },
 
     async deleteAccount(c: Context<AppEnv>) {
         const id = c.req.param("id")!;
 
-        const deleted = await accountService.delete(c.get("db"), scopeOf(c), id);
+        const deleted = await accountService.delete(c.get("db"), scopeOf(c), id, c.get("userId"));
         if (!deleted) throw new NotFoundError("Conta");
 
         return c.json(deleted);
