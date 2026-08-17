@@ -28,4 +28,13 @@ interface CloudflareBindings {
     // Homologação SEM e-mail real: quando "true", POST /auth/forgot devolve o código
     // na resposta para completar o smoke test. NUNCA ligar em produção (vaza código).
     DEV_EXPOSE_CODES?: string;
+    // Rate limiters nativos do Cloudflare (config-only em wrangler.json → ratelimits).
+    // Freiam força-bruta nos endpoints de auth. RL_LOGIN cobre o login;
+    // RL_CODE cobre o fluxo de código (forgot/verify-code/reset).
+    RL_LOGIN: RateLimit;
+    RL_CODE: RateLimit;
+    // Política SameSite do cookie de sessão. Default "Lax" (front e API sob o mesmo
+    // domínio registrável). Use "None" só como paliativo enquanto estiver em
+    // pages.dev ↔ workers.dev (cookie de terceiros — bloqueado no Safari). Ver lib/authCookie.ts.
+    COOKIE_SAMESITE?: "Lax" | "None" | "Strict";
 }

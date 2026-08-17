@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { loginSchema, forgotSchema, verifyCodeSchema, resetSchema } from "../schemas/auth.schema";
 import { authService, resolveAccountType } from "../services/auth.service";
 import { emailConfigFromEnv } from "../lib/email";
+import { setAuthCookie, clearAuthCookie } from "../lib/authCookie";
 import type { AppEnv } from "../types";
 
 export const authController = {
@@ -17,6 +18,10 @@ export const authController = {
             body,
             emailConfigFromEnv(c.env),
         );
+
+        // Login bem-sucedido → grava o token no cookie HttpOnly. O fluxo de
+        // primeiro acesso (`mustReset`) não emite token, então não seta cookie.
+        if ("token" in result && result.token) setAuthCookie(c, result.token);
 
         return c.json(result);
     },
@@ -57,7 +62,16 @@ export const authController = {
 
         const result = await authService.reset(c.get("db"), c.env.JWT_SECRET, body);
 
+        // reset já autentica (auto-login) → grava o cookie de sessão.
+        setAuthCookie(c, result.token);
+
         return c.json(result);
+    },
+
+    // Logout: apaga o cookie de sessão. Idempotente e público (não exige auth).
+    async logout(c: Context<AppEnv>) {
+        clearAuthCookie(c);
+        return c.json({ ok: true });
     },
 
     // Retorna o usuário autenticado a partir do token (rota protegida).

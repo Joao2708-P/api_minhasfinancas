@@ -1,7 +1,7 @@
 import { sign, verify } from "hono/jwt";
 
-// Duração do token: 7 dias (em segundos).
-const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
+// Duração do token: 7 dias (em segundos). Reusado no maxAge do cookie de sessão.
+export const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 export type TokenPayload = {
     sub: string;      // id do usuário
