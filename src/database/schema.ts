@@ -385,6 +385,43 @@ export const socio = sqliteTable(
 );
 
 /* ------------------------------------------------------------------ */
+/* Contas a pagar/receber (Fase 4) — compromissos futuros              */
+/* ------------------------------------------------------------------ */
+
+// UMA tabela com `direcao` ('payable'/'receivable') em vez de duas tabelas espelho
+// (a proposta sugeria conta_a_pagar + conta_a_receber): mesma estrutura, metade do
+// código (um service/endpoint com filtro). É o "compromisso futuro" (o que vai vencer),
+// diferente de `transacao` (fato consumado). A baixa/conciliação preenche `transacao_id`
+// e muda `status` para 'paid'. Status e recorrência em EN (decisão de padronização).
+export const contaProgramada = sqliteTable(
+    "conta_programada", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
+        cliente_id: text('cliente_id').notNull().references(() => cliente.id, { onDelete: 'cascade' }),
+        direction: text('direcao', { enum: ['payable', 'receivable'] }).notNull(),
+        description: text('descricao').notNull(),
+        value: integer('valor').notNull(),   // centavos, sempre positivo
+        dueDate: integer('vencimento', { mode: 'timestamp' }).notNull(),
+        // Fornecedor (payable) ou cliente comercial (receivable). set null: apagar o
+        // parceiro não apaga o compromisso.
+        partner_id: text('parceiro_id').references(() => parceiro.id, { onDelete: 'set null' }),
+        category_id: text('categoria_id').references(() => category.id, { onDelete: 'set null' }),
+        status: text('status', { enum: ['pending', 'paid', 'overdue', 'canceled'] }).notNull().default('pending'),
+        // Preenchido na baixa/conciliação com a transação que quitou o compromisso.
+        transaction_id: text('transacao_id').references(() => transaction.id, { onDelete: 'set null' }),
+        recurrence: text('recorrencia', { enum: ['once', 'monthly', 'weekly'] }).notNull().default('once'),
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+        updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        // Escopo de tenant + filtro por direção (contas a pagar vs a receber).
+        scopeIdx: index('conta_programada_scope_idx').on(table.organizacao_id, table.cliente_id, table.direction),
+        // Fluxo de caixa projetado consulta por vencimento dentro do escopo.
+        dueIdx: index('conta_programada_venc_idx').on(table.organizacao_id, table.cliente_id, table.dueDate),
+    })
+);
+
+/* ------------------------------------------------------------------ */
 /* Relations                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -486,4 +523,12 @@ export const funcionarioRelations = relations(funcionario, ({ one }) => ({
 export const socioRelations = relations(socio, ({ one }) => ({
     organizacao: one(organizacao, { fields: [socio.organizacao_id], references: [organizacao.id] }),
     cliente: one(cliente, { fields: [socio.cliente_id], references: [cliente.id] }),
+}));
+
+export const contaProgramadaRelations = relations(contaProgramada, ({ one }) => ({
+    organizacao: one(organizacao, { fields: [contaProgramada.organizacao_id], references: [organizacao.id] }),
+    cliente: one(cliente, { fields: [contaProgramada.cliente_id], references: [cliente.id] }),
+    parceiro: one(parceiro, { fields: [contaProgramada.partner_id], references: [parceiro.id] }),
+    categoria: one(category, { fields: [contaProgramada.category_id], references: [category.id] }),
+    transacao: one(transaction, { fields: [contaProgramada.transaction_id], references: [transaction.id] }),
 }));

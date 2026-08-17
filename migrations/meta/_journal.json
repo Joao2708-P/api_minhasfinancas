@@ -57,6 +57,13 @@
       "when": 1786836311032,
       "tag": "0007_strange_hiroim",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786931430248,
+      "tag": "0008_wild_jasper_sitwell",
+      "breakpoints": true
     }
   ]
 }

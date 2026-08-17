@@ -13,6 +13,19 @@ Convenção: cada migration = uma preocupação isolada (facilita reverter e rec
   D1 `minhas_financas`, bucket `minhas-financas-extratos`, projeto Pages `minhas-financas-app`.
 - Pendente (asset de imagem, não editável por código): `public/logo-light.png` / `logo-dark.png`.
 
+## Fase 4 — Contas a pagar/receber + conciliação (migration `0008`, branch `feature/fase-4-contas-pagar-receber`)
+- Tabela ÚNICA `conta_programada` com `direcao` (payable/receivable) em vez de duas tabelas espelho
+  (metade do código). Campos: valor (centavos), vencimento, parceiro_id/categoria_id (set null),
+  status (pending/paid/overdue/canceled, **EN**), transacao_id (baixa), recorrencia (once/monthly/weekly).
+  Índices de escopo + vencimento. `conta_contabil_id` omitido (plano de contas é Fase 1).
+- CRUD (`/scheduled`, filtros `?direction/status/from/to`) + **baixa/conciliação** `POST /scheduled/:id/settle`
+  (marca paga, vincula a transação — validada no mesmo tenant). `overdue` é DERIVADO na leitura
+  (pendente + vencido), sem cron. Tudo auditado (`recordAudit`).
+- Verificado e2e: criar vencida → overdue=true; settle com transação de outro tenant → 403; settle
+  com transação real → paid + vínculo; /audit registra.
+- **Falta na Fase 4 (próximos commits/chunks):** fluxo de caixa projetado (somar pendentes às datas
+  futuras no /reports/cashflow), sugestão de conciliação automática (casar valor+janela de data), e o front.
+
 ## Deploy de HOMOLOGAÇÃO (feito)
 - D1 remoto reconciliado (marcada a 0004 no tracker) e migrations 0004–0007 aplicadas.
 - Worker: https://minhas-financas-api.minhasfinancasapi.workers.dev (`wrangler deploy --minify`; segredos já existiam; `COOKIE_SAMESITE=None` adicionado ao wrangler.json).

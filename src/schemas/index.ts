@@ -12,3 +12,4 @@ export * from "./papel.schema";
 export * from "./parceiro.schema";
 export * from "./funcionario.schema";
 export * from "./socio.schema";
+export * from "./contaProgramada.schema";
