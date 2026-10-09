@@ -16,7 +16,6 @@ import { parceiroRoute } from "./parceiro.route";
 import { funcionarioRoute } from "./funcionario.route";
 import { socioRoute } from "./socio.route";
 import { contaProgramadaRoute } from "./contaProgramada.route";
-import { ingestKeyRoute } from "./ingestKey.route";
 import { bemRoute } from "./bem.route";
 import { ingestRoute } from "./ingest.route";
 import { orgRoute } from "./org.route";
@@ -89,8 +88,6 @@ scoped.route("/partners", parceiroRoute);
 scoped.route("/employees", funcionarioRoute);
 scoped.route("/shareholders", socioRoute);
 scoped.route("/scheduled", contaProgramadaRoute);
-// Chaves de ingestão do cliente (gerar/listar/revogar) — quem alimenta a ingestão.
-scoped.route("/ingest-keys", ingestKeyRoute);
 // Patrimônio (bens e investimentos) do cliente.
 scoped.route("/assets", bemRoute);
 

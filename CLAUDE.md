@@ -62,7 +62,7 @@ migrations/               # migrations geradas pelo drizzle-kit
   - Cadastros (Fase 3, escopo org+cliente): `parceiro`, `funcionario`, `socio`.
   - Contas a pagar/receber (Fase 4): `conta_programada` (`pago_em` = data da baixa).
   - Patrimônio: `bem` (bens e investimentos; custo + valor atual).
-  - Ingestão (Open Finance): `chave_ingestao` + `external_id` em `conta`/`transacao`.
+  - Ingestão (Open Finance): `chave_ingestao` + `external_id` em `conta`/`transacao`. A conexão é feita SÓ pelo dono da plataforma: chaves geridas em `/platform/orgs/:orgId/clientes/:clienteId/ingest-keys` (platformAdminGuard); escritório e cliente não gerenciam chaves. O agregador chama `POST /ingest/sync` com a chave.
 - **Valores de status**: idiomas misturados (EN em membro/organizacao/extrato; PT em cliente/log_auditoria). Direção-alvo p/ novos = EN; padronizar os outliers PT é migração destrutiva pendente de decisão (ver `CHANGELOG-metria.md`).
 - Índices de tenant `(organizacao_id[, cliente_id])` nas tabelas de dados + no `log_auditoria` (migration 0006).
 - Valores monetários são armazenados como **inteiros em centavos** (`integer`). Use `lib/money.ts`.
@@ -108,7 +108,7 @@ Lance as classes de `src/errors/errors.ts` (`AppError`, `NotFoundError`, `Confli
 ## Testes
 
 - `pnpm test` (Vitest, `test/*.test.ts`). Cobrem a lógica pura: `money`, `statementParser`, `categoryRules`, `password`, `jwt`, `goalProgress`, `calculators`, `dates`, `projection`, `reconcile`, `assets`.
-- Regras de negócio que dependem de D1/R2 não são cobertas por testes de unidade aqui; ao adicionar cobertura de rotas, considere `@cloudflare/vitest-pool-workers`.
+- `test/integration.test.ts`: services reais contra SQLite em memória (`node:sqlite`, exige Node 22.5+) com o schema das `migrations/*.sql` — cobre Fase 4, projeção, ingestão, patrimônio, chaves e isolamento de tenant. Rotas/middlewares HTTP e R2 seguem sem cobertura (para isso, `@cloudflare/vitest-pool-workers`).
 
 ## Convenções
 
