@@ -2,6 +2,7 @@ import type { Context } from "hono";
 import { createTransactionSchema, updateTransactionSchema } from "../schemas/transaction.schema";
 import { transactionService, type TransactionFilters } from "../services/transaction.service";
 import { NotFoundError } from "../errors/errors";
+import { parsePeriodParams } from "../lib/dates";
 import type { AppEnv, Scope } from "../types";
 
 const scopeOf = (c: Context<AppEnv>): Scope => ({
@@ -22,8 +23,8 @@ function parseFilters(c: Context<AppEnv>): TransactionFilters {
     if (accountId) filters.account_id = accountId;
     if (categoryId) filters.category_id = categoryId;
     if (type === "in" || type === "out") filters.type = type;
-    if (from) filters.from = new Date(from);
-    if (to) filters.to = new Date(to);
+    // `to` só-data é inclusivo (o dia inteiro); data inválida → 400.
+    Object.assign(filters, parsePeriodParams(from, to));
 
     const limit = Number(c.req.query("limit"));
     const offset = Number(c.req.query("offset"));

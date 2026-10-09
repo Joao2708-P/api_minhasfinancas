@@ -4,7 +4,7 @@ Orientações para o Claude Code ao trabalhar neste repositório.
 
 ## O que é
 
-API de finanças pessoais ("Minhas Finanças") construída com **Hono** (framework web), **Drizzle ORM** sobre **Cloudflare D1** (SQLite), rodando em **Cloudflare Workers** (Wrangler). Arquivos de extrato são armazenados no **Cloudflare R2**. Autenticação via **JWT** (`hono/jwt`). Validação de entrada com **Zod v4**. IDs gerados com **cuid2**. Testes com **Vitest**.
+API de finanças pessoais ("Metria Finanças") construída com **Hono** (framework web), **Drizzle ORM** sobre **Cloudflare D1** (SQLite), rodando em **Cloudflare Workers** (Wrangler). Arquivos de extrato são armazenados no **Cloudflare R2**. Autenticação via **JWT** (`hono/jwt`). Validação de entrada com **Zod v4**. IDs gerados com **cuid2**. Testes com **Vitest**.
 
 ## ⚠️ Regra importante
 
@@ -60,6 +60,9 @@ migrations/               # migrations geradas pelo drizzle-kit
   - Auditoria (Fase 2): `log_auditoria` (uma linha por escrita relevante; ver `services/audit.service.ts`).
   - Financeiro (escopo org+cliente): `tipo_conta` (lookup global), `conta`, `categoria`, `meta`, `transacao`, `extrato`.
   - Cadastros (Fase 3, escopo org+cliente): `parceiro`, `funcionario`, `socio`.
+  - Contas a pagar/receber (Fase 4): `conta_programada` (`pago_em` = data da baixa).
+  - Patrimônio: `bem` (bens e investimentos; custo + valor atual).
+  - Ingestão (Open Finance): `chave_ingestao` + `external_id` em `conta`/`transacao`.
 - **Valores de status**: idiomas misturados (EN em membro/organizacao/extrato; PT em cliente/log_auditoria). Direção-alvo p/ novos = EN; padronizar os outliers PT é migração destrutiva pendente de decisão (ver `CHANGELOG-metria.md`).
 - Índices de tenant `(organizacao_id[, cliente_id])` nas tabelas de dados + no `log_auditoria` (migration 0006).
 - Valores monetários são armazenados como **inteiros em centavos** (`integer`). Use `lib/money.ts`.
@@ -74,7 +77,21 @@ migrations/               # migrations geradas pelo drizzle-kit
 
 ## Relatórios
 
-`GET /reports/{summary,by-category,by-account,cashflow,goals}`, todos aceitam `?from=&to=` (datas ISO). Cálculos em centavos; formate só na borda com `formatBRL`.
+`GET /reports/{summary,by-category,by-account,cashflow,goals}`, todos aceitam `?from=&to=` (datas ISO; `to` só-data inclui o dia inteiro; data inválida → 400, via `lib/dates.parsePeriodParams`). Cálculos em centavos; formate só na borda com `formatBRL`.
+
+`GET /reports/projected-cashflow?months=` (1..24): saldo atual consolidado (`accountService.totalCurrentBalance`) + contas a pagar/receber pendentes por mês; atrasadas caem no 1º mês; recorrências expandidas (`lib/projection.ts`).
+
+## Contas a pagar/receber (Fase 4)
+
+- `POST /scheduled/:id/settle`: `transaction_id` (vincula; valida tipo e que não quita outra) **ou** `account_id` (+ `paidAt`/`value`; cria a transação via `transactionService.create`) **ou** vazio (só marca). Recorrente gera a próxima ocorrência (`spawnNext`, dedup por descrição+vencimento). Resposta: linha + `next`.
+- `GET /scheduled/:id/suggestions`: transações candidatas (±15 dias, valor ±10%), via `lib/reconcile.rankCandidates`.
+- Ingestão (`/ingest/sync`) auto-concilia só pares 1-para-1 (`lib/reconcile.autoMatch`), sem auditoria (não há usuário).
+- Excluir uma transação que quitava um compromisso o reabre (`transactionService.delete`).
+- `overdue` é derivado por dia, no fuso de Brasília (`lib/dates.isOverdue`).
+
+## Patrimônio
+
+`/assets` (CRUD, `finance:read|write`) + `GET /assets/summary` (totais por tipo/classe, ganho, patrimônio líquido = contas + bens). Ganho/retorno anualizado derivados em `lib/assets.ts` (anualiza só com ≥ 30 dias).
 
 ## Validação (Zod)
 
@@ -90,7 +107,7 @@ Lance as classes de `src/errors/errors.ts` (`AppError`, `NotFoundError`, `Confli
 
 ## Testes
 
-- `pnpm test` (Vitest, `test/*.test.ts`). Cobrem a lógica pura: `money`, `statementParser`, `categoryRules`, `password`, `jwt`, `goalProgress`.
+- `pnpm test` (Vitest, `test/*.test.ts`). Cobrem a lógica pura: `money`, `statementParser`, `categoryRules`, `password`, `jwt`, `goalProgress`, `calculators`, `dates`, `projection`, `reconcile`, `assets`.
 - Regras de negócio que dependem de D1/R2 não são cobertas por testes de unidade aqui; ao adicionar cobertura de rotas, considere `@cloudflare/vitest-pool-workers`.
 
 ## Convenções
@@ -108,6 +125,7 @@ Lance as classes de `src/errors/errors.ts` (`AppError`, `NotFoundError`, `Confli
 
 ## Pontos de atenção conhecidos
 
+- **Migration pendente (0009):** `schema.ts` tem mudanças ainda sem migration — `chave_ingestao`, `external_id` em `conta`/`transacao`, `conta_programada.pago_em`/`dia_vencimento` e a tabela `bem`. Sem ela, toda query de `transacao`/`conta_programada` quebra (Drizzle seleciona todas as colunas). O usuário precisa rodar `pnpm db:generate` + aplicar (local e remoto).
 - Migrations `0000`–`0003` estão **em sincronia** com `schema.ts` (multi-tenant, branding, `codigo_acesso`). Confirme com `pnpm db:generate` (não deve gerar migration nova). Sempre regere após mudar o schema.
 - `cors()` usa **allowlist** via `CORS_ORIGINS` (CSV); vazio → cai no allowlist de dev (localhost). Libera os headers de tenant (`X-Org-Id`/`X-Cliente-Id`) no preflight.
 - `better-sqlite3` ainda consta nas dependências, mas não é usado (o acesso é 100% via D1). Pode ser removido em uma limpeza futura.

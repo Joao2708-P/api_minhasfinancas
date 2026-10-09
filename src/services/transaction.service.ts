@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, lte } from "drizzle-orm";
 import type { Database } from "../database";
-import { account, category, transaction } from "../database/schema";
+import { account, category, contaProgramada, transaction } from "../database/schema";
 import type { CreateTransactionInput, UpdateTransactionInput } from "../schemas";
 import type { Scope } from "../types";
 import { ForbiddenError, NotFoundError } from "../errors/errors";
@@ -107,6 +107,18 @@ export const transactionService = {
     },
 
     async delete(db: Database, s: Scope, id: string, actorUserId: string) {
+        // Se esta transação quitava uma conta a pagar/receber, a baixa é desfeita (volta
+        // a pendente). Sem isso, a FK `set null` deixaria o compromisso "pago" sem
+        // pagamento nenhum — e ele sumiria do fluxo de caixa projetado.
+        await db
+            .update(contaProgramada)
+            .set({ status: "pending", transaction_id: null, paidAt: null, updateAt: new Date() })
+            .where(and(
+                eq(contaProgramada.transaction_id, id),
+                eq(contaProgramada.organizacao_id, s.orgId),
+                eq(contaProgramada.cliente_id, s.clienteId),
+            ));
+
         const [deleted] = await db
             .delete(transaction)
             .where(and(eq(transaction.id, id), inScope(s)))

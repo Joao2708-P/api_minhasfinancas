@@ -202,12 +202,17 @@ export const account = sqliteTable(
         name: text('nome').notNull(),
         banco: text('banco'),
         balance: integer('saldo'),   // saldo de abertura, em centavos (saldo atual é derivado)
+        // Referência da conta na fonte externa (Open Finance/agregador). Usado para
+        // auto-registro/dedup na ingestão via API. NULL = conta criada manualmente.
+        external_id: text('external_id'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
     },
     (table) => ({
         // Todo acesso é filtrado por tenant (organizacao_id + cliente_id).
         scopeIdx: index('conta_scope_idx').on(table.organizacao_id, table.cliente_id),
+        // Lookup de dedup/auto-registro por referência externa dentro do tenant.
+        extIdx: index('conta_external_idx').on(table.organizacao_id, table.cliente_id, table.external_id),
     })
 );
 
@@ -257,12 +262,17 @@ export const transaction = sqliteTable(
         description: text('descricao'),
         value: integer('valor').notNull(),  // sempre positivo, em centavos; o sinal vem de `tipo`
         date: integer('data', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+        // Id da transação na fonte externa (Open Finance/agregador). Chave de dedup da
+        // ingestão via API: transação com o mesmo external_id no tenant não é reinserida.
+        external_id: text('external_id'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
     },
     (table) => ({
         // Filtro por tenant + ordenação por data (listByScope ordena por data desc).
         scopeDateIdx: index('transacao_scope_data_idx').on(table.organizacao_id, table.cliente_id, table.date),
+        // Dedup da ingestão: busca por external_id dentro do tenant.
+        extIdx: index('transacao_external_idx').on(table.organizacao_id, table.cliente_id, table.external_id),
     })
 );
 
@@ -409,7 +419,12 @@ export const contaProgramada = sqliteTable(
         status: text('status', { enum: ['pending', 'paid', 'overdue', 'canceled'] }).notNull().default('pending'),
         // Preenchido na baixa/conciliação com a transação que quitou o compromisso.
         transaction_id: text('transacao_id').references(() => transaction.id, { onDelete: 'set null' }),
+        // Data efetiva da baixa (pode diferir do vencimento). NULL enquanto pendente.
+        paidAt: integer('pago_em', { mode: 'timestamp' }),
         recurrence: text('recorrencia', { enum: ['once', 'monthly', 'weekly'] }).notNull().default('once'),
+        // Dia "de verdade" do vencimento mensal (1..31). Sem ele, uma conta do dia 31 viraria
+        // 28/fev e ficaria presa no 28 para sempre; com ele, 31/jan → 28/fev → 31/mar.
+        anchorDay: integer('dia_vencimento'),
         createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
         updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
     },
@@ -418,6 +433,67 @@ export const contaProgramada = sqliteTable(
         scopeIdx: index('conta_programada_scope_idx').on(table.organizacao_id, table.cliente_id, table.direction),
         // Fluxo de caixa projetado consulta por vencimento dentro do escopo.
         dueIdx: index('conta_programada_venc_idx').on(table.organizacao_id, table.cliente_id, table.dueDate),
+    })
+);
+
+/* ------------------------------------------------------------------ */
+/* Patrimônio — bens e investimentos do cliente (módulo opcional)      */
+/* ------------------------------------------------------------------ */
+
+// Um bem/investimento do cliente: imóvel, veículo, aplicação financeira etc. Guarda o
+// CUSTO (valor de aquisição) e o VALOR ATUAL (última avaliação/posição) — o ganho e o
+// retorno anualizado são derivados (lib/assets.ts). Patrimônio líquido = saldo atual
+// das contas + valor atual dos bens. `tipo`/`classe` em EN (vocabulário padronizado).
+export const bem = sqliteTable(
+    "bem", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
+        cliente_id: text('cliente_id').notNull().references(() => cliente.id, { onDelete: 'cascade' }),
+        kind: text('tipo', { enum: ['real_estate', 'vehicle', 'investment', 'other'] }).notNull(),
+        // Só para kind='investment' (renda fixa, ações, FII...). NULL nos demais.
+        investmentClass: text('classe_investimento', {
+            enum: ['fixed_income', 'stocks', 'funds', 'real_estate_funds', 'crypto', 'pension', 'savings', 'other'],
+        }),
+        name: text('nome').notNull(),
+        institution: text('instituicao'),                    // corretora/banco/cartório
+        acquisitionValue: integer('valor_aquisicao').notNull(), // centavos (custo)
+        acquiredAt: integer('data_aquisicao', { mode: 'timestamp' }),
+        currentValue: integer('valor_atual').notNull(),         // centavos (última avaliação)
+        valuedAt: integer('avaliado_em', { mode: 'timestamp' }),
+        notes: text('observacoes'),
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+        updateAt: integer('atualizado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        scopeIdx: index('bem_scope_idx').on(table.organizacao_id, table.cliente_id),
+    })
+);
+
+/* ------------------------------------------------------------------ */
+/* Ingestão de dados de contas reais via API (Open Finance/agregador)  */
+/* ------------------------------------------------------------------ */
+
+// Chave de API de ingestão, POR CLIENTE. O agregador (ou um job) autentica no
+// endpoint /ingest com esta chave; o escopo org+cliente vem DAQUI (nunca do payload).
+// Guardamos só o HASH (SHA-256) do token — a chave crua é mostrada uma única vez na
+// criação. `last4` ajuda a identificar na lista sem revelar o segredo.
+export const chaveIngestao = sqliteTable(
+    "chave_ingestao", {
+        id: text('id').primaryKey().$defaultFn(() => createId()),
+        organizacao_id: text('organizacao_id').notNull().references(() => organizacao.id, { onDelete: 'cascade' }),
+        cliente_id: text('cliente_id').notNull().references(() => cliente.id, { onDelete: 'cascade' }),
+        name: text('nome').notNull(),                       // rótulo, ex.: "Pluggy produção"
+        tokenHash: text('token_hash').notNull(),            // SHA-256 hex do token
+        last4: text('ultimos4').notNull(),                  // últimos 4 chars do token
+        revoked: integer('revogada', { mode: 'boolean' }).notNull().default(false),
+        lastUsedAt: integer('usada_em', { mode: 'timestamp' }),
+        createdAt: integer('criado_em', { mode: 'timestamp' }).notNull().default(sql`(strftime('%s', 'now'))`),
+    },
+    (table) => ({
+        // Autenticação da ingestão: lookup direto pelo hash do token.
+        hashIdx: index('chave_ingestao_hash_idx').on(table.tokenHash),
+        // Listagem das chaves de um cliente.
+        scopeIdx: index('chave_ingestao_scope_idx').on(table.organizacao_id, table.cliente_id),
     })
 );
 
@@ -531,4 +607,14 @@ export const contaProgramadaRelations = relations(contaProgramada, ({ one }) => 
     parceiro: one(parceiro, { fields: [contaProgramada.partner_id], references: [parceiro.id] }),
     categoria: one(category, { fields: [contaProgramada.category_id], references: [category.id] }),
     transacao: one(transaction, { fields: [contaProgramada.transaction_id], references: [transaction.id] }),
+}));
+
+export const chaveIngestaoRelations = relations(chaveIngestao, ({ one }) => ({
+    organizacao: one(organizacao, { fields: [chaveIngestao.organizacao_id], references: [organizacao.id] }),
+    cliente: one(cliente, { fields: [chaveIngestao.cliente_id], references: [cliente.id] }),
+}));
+
+export const bemRelations = relations(bem, ({ one }) => ({
+    organizacao: one(organizacao, { fields: [bem.organizacao_id], references: [organizacao.id] }),
+    cliente: one(cliente, { fields: [bem.cliente_id], references: [cliente.id] }),
 }));

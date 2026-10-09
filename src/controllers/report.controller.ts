@@ -1,20 +1,16 @@
 import type { Context } from "hono";
 import { reportService } from "../services/report.service";
 import type { AppEnv, Scope } from "../types";
+import { parsePeriodParams } from "../lib/dates";
 
 const scopeOf = (c: Context<AppEnv>): Scope => ({
     orgId: c.get("organizacaoId"),
     clienteId: c.get("clienteId"),
 });
 
-// Lê ?from e ?to (datas ISO) da query string.
+// Lê ?from e ?to (datas ISO). `to` só-data inclui o dia inteiro; data inválida → 400.
 function parsePeriod(c: Context<AppEnv>) {
-    const from = c.req.query("from");
-    const to = c.req.query("to");
-    return {
-        from: from ? new Date(from) : undefined,
-        to: to ? new Date(to) : undefined,
-    };
+    return parsePeriodParams(c.req.query("from"), c.req.query("to"));
 }
 
 export const reportController = {
@@ -35,6 +31,18 @@ export const reportController = {
 
     async cashflow(c: Context<AppEnv>) {
         const data = await reportService.monthlyCashflow(c.get("db"), scopeOf(c), parsePeriod(c));
+        return c.json(data);
+    },
+
+    // Fluxo de caixa PROJETADO: saldo atual + contas a pagar/receber pendentes,
+    // mês a mês. ?months= (1..24, padrão 6).
+    async projectedCashflow(c: Context<AppEnv>) {
+        const months = Number(c.req.query("months") ?? 6);
+        const data = await reportService.projectedCashflow(
+            c.get("db"),
+            scopeOf(c),
+            Number.isFinite(months) ? months : 6,
+        );
         return c.json(data);
     },
 

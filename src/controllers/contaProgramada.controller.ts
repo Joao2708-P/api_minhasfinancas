@@ -6,6 +6,7 @@ import {
 } from "../schemas";
 import { contaProgramadaService, type ContaProgramadaFilters } from "../services/contaProgramada.service";
 import { NotFoundError } from "../errors/errors";
+import { parsePeriodParams } from "../lib/dates";
 import type { AppEnv, Scope } from "../types";
 
 const scopeOf = (c: Context<AppEnv>): Scope => ({
@@ -21,8 +22,8 @@ function parseFilters(c: Context<AppEnv>): ContaProgramadaFilters {
     const to = c.req.query("to");
     if (dir === "payable" || dir === "receivable") f.direction = dir;
     if (status === "pending" || status === "paid" || status === "overdue" || status === "canceled") f.status = status;
-    if (from) f.from = new Date(from);
-    if (to) f.to = new Date(to);
+    // `to` só-data é inclusivo (o dia inteiro); data inválida → 400.
+    Object.assign(f, parsePeriodParams(from, to));
     return f;
 }
 
@@ -54,6 +55,11 @@ export const contaProgramadaController = {
         const body = settleContaProgramadaSchema.parse(await c.req.json().catch(() => ({})));
         const updated = await contaProgramadaService.settle(c.get("db"), scopeOf(c), c.req.param("id")!, body, c.get("userId"));
         return c.json(updated);
+    },
+
+    // Transações candidatas a quitar este compromisso (para a baixa manual).
+    async suggestions(c: Context<AppEnv>) {
+        return c.json(await contaProgramadaService.suggestions(c.get("db"), scopeOf(c), c.req.param("id")!));
     },
 
     async remove(c: Context<AppEnv>) {

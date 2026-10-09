@@ -13,3 +13,6 @@ export * from "./parceiro.schema";
 export * from "./funcionario.schema";
 export * from "./socio.schema";
 export * from "./contaProgramada.schema";
+export * from "./ingestKey.schema";
+export * from "./ingest.schema";
+export * from "./bem.schema";

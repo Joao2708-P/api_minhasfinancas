@@ -10,6 +10,18 @@ describe("money", () => {
         expect(toCents(19.99)).toBe(1999);
     });
 
+    it("não perde o meio centavo por ruído de float (1.005 * 100 = 100.4999…)", () => {
+        expect(toCents(1.005)).toBe(101);
+        expect(toCents(4.35)).toBe(435);
+        expect(toCents(0.285)).toBe(29);
+    });
+
+    it("arredonda negativos para longe do zero (simétrico)", () => {
+        expect(toCents(-1.005)).toBe(-101);
+        expect(toCents(-0.5)).toBe(-50);
+        expect(toCents(-10.555)).toBe(-1056);
+    });
+
     it("converte centavos para reais", () => {
         expect(fromCents(1000)).toBe(10);
         expect(fromCents(1999)).toBe(19.99);

@@ -97,6 +97,25 @@ export const accountService = {
         return deleted;
     },
 
+    // Saldo atual CONSOLIDADO do cliente = Σ saldos de abertura + Σ entradas − Σ saídas
+    // (todas as contas). É o "dinheiro em caixa hoje" — ponto de partida do fluxo
+    // projetado e parcela líquida do patrimônio. Duas agregações, sem N+1.
+    async totalCurrentBalance(db: Database, s: Scope) {
+        const [opening] = await db
+            .select({ total: sql<number>`coalesce(sum(${account.balance}), 0)` })
+            .from(account)
+            .where(inScope(s));
+        const [net] = await db
+            .select({
+                incomes: sql<number>`coalesce(sum(case when ${transaction.type} = 'in' then ${transaction.value} else 0 end), 0)`,
+                expenses: sql<number>`coalesce(sum(case when ${transaction.type} = 'out' then ${transaction.value} else 0 end), 0)`,
+            })
+            .from(transaction)
+            .where(and(eq(transaction.organizacao_id, s.orgId), eq(transaction.cliente_id, s.clienteId)));
+
+        return Number(opening?.total ?? 0) + Number(net?.incomes ?? 0) - Number(net?.expenses ?? 0);
+    },
+
     // Saldo atual = abertura + entradas - saídas. Agregação escopada por
     // org+cliente pra não vazar saldo entre tenants.
     async currentBalance(db: Database, s: Scope, accountId: string, openingBalance: number) {

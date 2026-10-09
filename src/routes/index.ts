@@ -16,6 +16,9 @@ import { parceiroRoute } from "./parceiro.route";
 import { funcionarioRoute } from "./funcionario.route";
 import { socioRoute } from "./socio.route";
 import { contaProgramadaRoute } from "./contaProgramada.route";
+import { ingestKeyRoute } from "./ingestKey.route";
+import { bemRoute } from "./bem.route";
+import { ingestRoute } from "./ingest.route";
 import { orgRoute } from "./org.route";
 import { membroRoute } from "./membro.route";
 import { clienteRoute } from "./cliente.route";
@@ -38,6 +41,10 @@ routes.route("/public", publicRoute);
 // (adminGuard). É como o dono da plataforma cadastra donos enquanto o
 // self-service está fechado.
 routes.route("/admin", adminRoute);
+
+// Ingestão de dados de contas reais (Open Finance/agregador). NÃO usa authGuard —
+// é server-to-server, autenticada pela chave por cliente (ingestGuard dentro da rota).
+routes.route("/ingest", ingestRoute);
 
 // Rotas protegidas: exigem JWT válido. O authGuard injeta o userId no contexto.
 const protectedRoutes = new Hono<AppEnv>();
@@ -82,6 +89,10 @@ scoped.route("/partners", parceiroRoute);
 scoped.route("/employees", funcionarioRoute);
 scoped.route("/shareholders", socioRoute);
 scoped.route("/scheduled", contaProgramadaRoute);
+// Chaves de ingestão do cliente (gerar/listar/revogar) — quem alimenta a ingestão.
+scoped.route("/ingest-keys", ingestKeyRoute);
+// Patrimônio (bens e investimentos) do cliente.
+scoped.route("/assets", bemRoute);
 
 protectedRoutes.route("/", scoped);
 

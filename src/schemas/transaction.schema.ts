@@ -12,8 +12,8 @@ export const createTransactionSchema = z.object({
         .number()
         .int("O valor deve ser um inteiro (em centavos)")
         .positive("O valor deve ser maior que zero"),
-    // Data da transação (opcional; default = agora no banco).
-    date: z.coerce.date().optional(),
+    // Data da transação — OBRIGATÓRIA (não usa mais o default do banco).
+    date: z.coerce.date({ error: "A data da transação é obrigatória" }),
 });
 
 export const updateTransactionSchema = createTransactionSchema.partial();

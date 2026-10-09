@@ -1,8 +1,10 @@
 import { and, eq, gte, lte, sql, type SQL } from "drizzle-orm";
 import type { Database } from "../database";
-import { account, category, transaction } from "../database/schema";
+import { account, category, contaProgramada, transaction } from "../database/schema";
 import type { Scope } from "../types";
 import { goalService, goalProgress } from "./goal.service";
+import { accountService } from "./account.service";
+import { projectCashflow } from "../lib/projection";
 
 type Period = { from?: Date; to?: Date };
 
@@ -103,6 +105,24 @@ export const reportService = {
             expenses: Number(r.expenses),
             balance: Number(r.incomes) - Number(r.expenses),
         }));
+    },
+
+    // Fluxo de caixa PROJETADO (Fase 4): parte do saldo atual consolidado e aplica as
+    // contas a pagar/receber PENDENTES mês a mês (atrasadas no 1º mês; recorrências
+    // expandidas). A lógica fica em lib/projection.ts (pura, testada).
+    async projectedCashflow(db: Database, s: Scope, months: number) {
+        const [openingBalance, pending] = await Promise.all([
+            accountService.totalCurrentBalance(db, s),
+            db.query.contaProgramada.findMany({
+                columns: { direction: true, description: true, value: true, dueDate: true, recurrence: true, anchorDay: true },
+                where: and(
+                    eq(contaProgramada.organizacao_id, s.orgId),
+                    eq(contaProgramada.cliente_id, s.clienteId),
+                    eq(contaProgramada.status, "pending"),
+                ),
+            }),
+        ]);
+        return projectCashflow({ openingBalance, items: pending, months });
     },
 
     // Progresso de todas as metas do cliente.

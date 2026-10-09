@@ -9,11 +9,13 @@
  * tanto num endpoint quanto num módulo futuro (§5 do task.md).
  */
 
-// Taxa mensal a partir da taxa anual em %. Ex.: 12% a.a. → 0.01 a.m. (juros
-// simples de conversão: aa/12). Usamos a convenção "nominal ao mês" por ser a
-// mais comum em simulação de aportes/financiamento no varejo brasileiro.
-function monthlyRate(annualRatePct: number): number {
-    return annualRatePct / 100 / 12;
+// Taxa mensal EQUIVALENTE a partir da taxa anual em %: (1 + aa)^(1/12) − 1.
+// Ex.: 12% a.a. → ≈ 0,9489% a.m. É a convenção brasileira (CDI, Tesouro, CET de
+// financiamento): 12 meses compostos à taxa mensal reproduzem exatamente a anual.
+// Antes usávamos a nominal (aa/12 = 1% a.m.), que compõe para 12,68% a.a. e
+// superestimava rendimentos e parcelas.
+export function monthlyRate(annualRatePct: number): number {
+    return Math.pow(1 + annualRatePct / 100, 1 / 12) - 1;
 }
 
 export type CompoundInput = {
@@ -65,9 +67,10 @@ export type LoanInput = {
 };
 
 export type LoanResult = {
-    installment: number;   // valor da parcela (fixa), em centavos
-    totalPaid: number;     // total pago ao fim, em centavos
-    totalInterest: number; // juros totais, em centavos
+    installment: number;      // valor da parcela (fixa), em centavos
+    lastInstallment: number;  // última parcela — absorve o arredondamento dos centavos
+    totalPaid: number;        // total pago ao fim, em centavos (soma exata das parcelas)
+    totalInterest: number;    // juros totais, em centavos
 };
 
 /**
@@ -82,12 +85,21 @@ export function loanInstallment(input: LoanInput): LoanResult {
 
     const installment =
         i === 0 ? principal / n : (principal * i) / (1 - Math.pow(1 + i, -n));
-
     const pmt = Math.round(installment);
-    const totalPaid = pmt * n;
+
+    // Arredondar a parcela para centavos faz o saldo não zerar exatamente no fim
+    // (pmt × n "deriva" do valor real). Rodamos a tabela em centavos e a ÚLTIMA
+    // parcela quita o saldo residual — como faz o banco.
+    let balance = principal;
+    for (let k = 1; k < n; k++) {
+        balance -= pmt - Math.round(balance * i);
+    }
+    const last = balance + Math.round(balance * i);
+    const totalPaid = pmt * (n - 1) + last;
 
     return {
         installment: pmt,
+        lastInstallment: last,
         totalPaid,
         totalInterest: totalPaid - principal,
     };

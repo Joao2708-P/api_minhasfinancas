@@ -9,4 +9,5 @@ reportRoute.get("/summary", requirePermission("report:read"), reportController.s
 reportRoute.get("/by-category", requirePermission("report:read"), reportController.byCategory);
 reportRoute.get("/by-account", requirePermission("report:read"), reportController.byAccount);
 reportRoute.get("/cashflow", requirePermission("report:read"), reportController.cashflow);
+reportRoute.get("/projected-cashflow", requirePermission("report:read"), reportController.projectedCashflow);
 reportRoute.get("/goals", requirePermission("report:read"), reportController.goals);
